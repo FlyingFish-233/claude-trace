@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+set -eu
+script_path="$(readlink -f "$0")"
+bundle_dir="$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)"
+exec "$bundle_dir/node/bin/node" \
+  "$bundle_dir/package/node_modules/@uvl000/claude-trace/dist/cli/verify-offline-bundle.js" \
+  "$bundle_dir"

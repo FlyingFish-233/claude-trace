@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+set -eu
+script_path="$(readlink -f "$0")"
+bundle_dir="$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)"
+mkdir -p "$HOME/.local/bin"
+if [ ! -x "$HOME/.local/bin/claude-real" ]; then
+  real_binary="$(readlink -f "$HOME/.local/bin/claude")"
+  if [ "$real_binary" = "$HOME/.local/bin/claude" ]; then
+    mv "$HOME/.local/bin/claude" "$HOME/.local/bin/claude-real"
+  else
+    ln -sfn "$real_binary" "$HOME/.local/bin/claude-real"
+  fi
+fi
+ln -sfn "$bundle_dir/bin/claude-wrapper" "$HOME/.local/bin/claude"

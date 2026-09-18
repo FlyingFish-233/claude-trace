@@ -1,0 +1,103 @@
+{
+	"name": "@uvl000/claude-trace",
+	"version": "3.0.13-workflowexp.2",
+	"description": "WorkflowExp fork for recording API traffic from Claude Code, OpenCode, and Codex CLI",
+	"main": "dist/index.js",
+	"bin": {
+		"claude-trace": "dist/cli/cli.js",
+		"claude-trace-validate": "dist/cli/validate-trace.js",
+		"opencode-trace": "dist/cli/opencode-cli.js",
+		"codex-trace": "dist/cli/codex-cli.js",
+		"vibe-coding-proxy": "dist/cli/vibe-coding-proxy-cli.js"
+	},
+	"scripts": {
+		"build": "tsc && mkdir -p dist/intercept && cp src/intercept/interceptor-loader.js src/intercept/token-extractor.js dist/intercept/ && npm run build:frontend",
+		"build:frontend": "cd frontend && npm run build",
+		"setup": "npm install && cd frontend && npm install",
+		"predev": "tsc && mkdir -p dist/intercept && cp src/intercept/interceptor-loader.js src/intercept/token-extractor.js dist/intercept/",
+		"dev": "concurrently \"npm run dev:core\" \"npm run dev:copy\" \"npm run dev:frontend\"",
+		"dev:core": "tsc --watch --preserveWatchOutput",
+		"dev:copy": "npx nodemon --watch src/intercept/interceptor-loader.js --watch src/intercept/token-extractor.js --exec 'mkdir -p dist/intercept && cp src/intercept/interceptor-loader.js src/intercept/token-extractor.js dist/intercept/'",
+		"dev:frontend": "cd frontend && npm run dev",
+		"clean": "rm -rf dist",
+		"prepublishOnly": "npm run clean && npm run build",
+		"test": "node --require ./dist/intercept/interceptor.js echo 'test'",
+		"test:unit": "npx tsx --test test/*.test.ts",
+		"test:generate": "npx tsx src/cli/cli.ts test/test-traffic.jsonl test/index.html",
+		"typecheck": "tsc --noEmit",
+		"pack:workflowexp": "bash scripts/pack-workflowexp.sh releases",
+		"publish:check": "bash scripts/publish.sh --check",
+		"publish:dry-run": "bash scripts/publish.sh --dry-run",
+		"publish:release": "bash scripts/publish.sh",
+		"publish:patch": "bash scripts/publish.sh patch",
+		"publish:minor": "bash scripts/publish.sh minor",
+		"publish:major": "bash scripts/publish.sh major",
+		"publish:oidc:check": "bash scripts/publish-oidc.sh --check",
+		"publish:oidc:dry-run": "bash scripts/publish-oidc.sh --dry-run",
+		"publish:oidc": "bash scripts/publish-oidc.sh",
+		"publish:oidc:patch": "bash scripts/publish-oidc.sh patch",
+		"publish:oidc:minor": "bash scripts/publish-oidc.sh minor",
+		"publish:oidc:major": "bash scripts/publish-oidc.sh major"
+	},
+	"files": [
+		"dist/**/*",
+		"frontend/dist/**/*",
+		"frontend/template.html",
+		"offline/bin/**/*",
+		"README.md",
+		"README.zh-CN.md"
+	],
+	"keywords": [
+		"claude",
+		"opencode",
+		"codex",
+		"anthropic",
+		"logging",
+		"api",
+		"debugging",
+		"http",
+		"interception"
+	],
+	"author": "Mario Zechner",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/hanqunfeng/claude-trace.git"
+	},
+	"engines": {
+		"node": ">=16.0.0"
+	},
+	"devDependencies": {
+		"@anthropic-ai/sdk": "^0.52.0",
+		"@types/node": "^20.0.0",
+		"@types/node-forge": "^1.3.14",
+		"concurrently": "^9.1.2",
+		"nodemon": "^3.1.10",
+		"tsx": "4.23.13",
+		"typescript": "^5.0.0"
+	},
+	"directories": {
+		"test": "test"
+	},
+	"types": "./dist/index.d.ts",
+	"bugs": {
+		"url": "https://github.com/hanqunfeng/claude-trace/issues"
+	},
+	"homepage": "https://github.com/hanqunfeng/claude-trace#readme",
+	"publishConfig": {
+		"access": "public",
+		"tag": "workflowexp"
+	},
+	"dependencies": {
+		"http-proxy-agent": "7.0.2",
+		"https-proxy-agent": "7.0.6",
+		"node-forge": "^1.4.0",
+		"smol-toml": "^1.6.1"
+	},
+	"bundleDependencies": [
+		"http-proxy-agent",
+		"https-proxy-agent",
+		"node-forge",
+		"smol-toml"
+	]
+}

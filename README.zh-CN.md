@@ -4,7 +4,7 @@
 
 记录 **Claude Code**、**OpenCode**、**Codex CLI** 以及通过独立正向代理接入的指定大模型端点 API 流量。在自包含 HTML 查看器中查看系统提示词、工具输出、思考块以及完整请求/响应数据。
 
-**[mariozechner/claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace) 的分支版本**，扩展支持 [Claude Code V2+](https://docs.anthropic.com/en/docs/claude-code) 原生二进制、独立的 **[OpenCode](https://opencode.ai)** 命令（多 provider 拦截，Anthropic 与 OpenAI API 格式），以及 **[Codex CLI](https://developers.openai.com/codex/cli) ChatGPT OAuth** 追踪（通过 ChatGPT 账号登录 —— 多数用户的默认 Codex 认证方式）。
+**Fork 来源：** 本仓库从 [hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace) fork，而该仓库又从 [badlogic/lemmy 中的 claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace) fork。本项目在此基础上扩展支持 [Claude Code V2+](https://docs.anthropic.com/en/docs/claude-code) 原生二进制、独立的 **[OpenCode](https://opencode.ai)** 命令（多 provider 拦截，Anthropic 与 OpenAI API 格式），以及 **[Codex CLI](https://developers.openai.com/codex/cli) ChatGPT OAuth** 追踪（通过 ChatGPT 账号登录 —— 多数用户的默认 Codex 认证方式）。
 
 ## 代理模式总览（正向代理 & 反向代理）
 
@@ -55,7 +55,7 @@ npm install -g @uvl000/claude-trace
 ### 从源码安装
 
 ```bash
-git clone https://github.com/hanqunfeng/claude-trace.git
+git clone https://github.com/FlyingFish-233/claude-trace.git
 cd claude-trace
 npm run setup   # 安装根目录 + frontend 依赖
 npm run build
@@ -474,4 +474,4 @@ npm run test:unit
 
 ## 许可证
 
-MIT — 原作者 [Mario Zechner](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace)，基于 [@hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace)，并以 `@uvl000/claude-trace` 为 WorkflowExp 打包发布。
+MIT — 当前维护于 [FlyingFish-233/claude-trace](https://github.com/FlyingFish-233/claude-trace)，fork 自 [hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace)，而后者 fork 自 [badlogic/lemmy 中的 claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace)。

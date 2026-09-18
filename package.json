@@ -1,6 +1,6 @@
 {
 	"name": "@uvl000/claude-trace",
-	"version": "3.0.13-workflowexp.2",
+	"version": "4.0.1",
 	"description": "WorkflowExp fork for recording API traffic from Claude Code, OpenCode, and Codex CLI",
 	"main": "dist/index.js",
 	"bin": {
@@ -62,7 +62,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/hanqunfeng/claude-trace.git"
+		"url": "git+https://github.com/FlyingFish-233/claude-trace.git"
 	},
 	"engines": {
 		"node": ">=16.0.0"
@@ -81,12 +81,11 @@
 	},
 	"types": "./dist/index.d.ts",
 	"bugs": {
-		"url": "https://github.com/hanqunfeng/claude-trace/issues"
+		"url": "https://github.com/FlyingFish-233/claude-trace/issues"
 	},
-	"homepage": "https://github.com/hanqunfeng/claude-trace#readme",
+	"homepage": "https://github.com/FlyingFish-233/claude-trace#readme",
 	"publishConfig": {
-		"access": "public",
-		"tag": "workflowexp"
+		"access": "public"
 	},
 	"dependencies": {
 		"http-proxy-agent": "7.0.2",

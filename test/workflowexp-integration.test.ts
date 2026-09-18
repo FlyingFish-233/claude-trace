@@ -85,7 +85,7 @@ describe("WorkflowExp integration", () => {
 		);
 	});
 
-	it("writes complete metadata and removes derived reports", () => {
+	it("writes complete metadata without removing derived reports", () => {
 		const traceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "claude-trace-valid-"));
 		const claudePath = path.join(traceDirectory, "claude-real");
 		fs.writeFileSync(claudePath, "#!/bin/sh\necho '2.1.216 (Claude Code)'\n");
@@ -119,8 +119,8 @@ describe("WorkflowExp integration", () => {
 		assert.deepEqual(metadata.validation_errors, []);
 		assert.equal(metadata.headers_fully_redacted, true);
 		assert.equal(metadata.message_exchange_count, 1);
-		assert.equal(fs.existsSync(path.join(traceDirectory, "trace.json")), false);
-		assert.equal(fs.existsSync(path.join(traceDirectory, "trace.html")), false);
+		assert.equal(fs.readFileSync(path.join(traceDirectory, "trace.json"), "utf8"), "[]");
+		assert.equal(fs.readFileSync(path.join(traceDirectory, "trace.html"), "utf8"), "html");
 	});
 
 	it("removes secret material and marks an incomplete trace", () => {

@@ -4,7 +4,7 @@
 
 Record API traffic from **Claude Code**, **OpenCode**, **Codex CLI**, and allowlisted LLM endpoints through a standalone forward proxy. Inspect everything the tools hide — system prompts, tool outputs, thinking blocks, and raw request/response data — in a self-contained HTML viewer.
 
-**Fork of [mariozechner/claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace)**, extended with [Claude Code V2+](https://docs.anthropic.com/en/docs/claude-code) native-binary support, a dedicated **[OpenCode](https://opencode.ai)** CLI with multi-provider interception (Anthropic and OpenAI API formats), and **[Codex CLI](https://developers.openai.com/codex/cli) ChatGPT OAuth** tracing (login via ChatGPT account — the default Codex auth path for most users).
+**Fork lineage:** this repository is forked from [hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace), which was itself forked from [badlogic/lemmy's claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace). It extends the project with [Claude Code V2+](https://docs.anthropic.com/en/docs/claude-code) native-binary support, a dedicated **[OpenCode](https://opencode.ai)** CLI with multi-provider interception (Anthropic and OpenAI API formats), and **[Codex CLI](https://developers.openai.com/codex/cli) ChatGPT OAuth** tracing (login via ChatGPT account — the default Codex auth path for most users).
 
 ## Proxy modes (forward & reverse)
 
@@ -55,7 +55,7 @@ npm install -g @uvl000/claude-trace
 ### From source
 
 ```bash
-git clone https://github.com/hanqunfeng/claude-trace.git
+git clone https://github.com/FlyingFish-233/claude-trace.git
 cd claude-trace
 npm run setup   # installs root + frontend dependencies
 npm run build
@@ -474,4 +474,4 @@ Maintainer and contributor docs live under [`doc/`](doc/):
 
 ## License
 
-MIT — originally by [Mario Zechner](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace), based on [@hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace), and packaged for WorkflowExp as `@uvl000/claude-trace`.
+MIT — maintained at [FlyingFish-233/claude-trace](https://github.com/FlyingFish-233/claude-trace), forked from [hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace), which was forked from [badlogic/lemmy's claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace).

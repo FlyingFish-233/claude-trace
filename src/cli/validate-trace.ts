@@ -54,10 +54,13 @@ function timestampMillis(value: unknown): number | null {
 }
 
 function isMessageExchange(record: RawPair): boolean {
-	return (
-		record.request?.method === "POST" &&
-		String(record.request?.url || "").includes("/v1/messages")
-	);
+	if (record.request?.method !== "POST") return false;
+	try {
+		const pathname = new URL(String(record.request.url || "")).pathname.replace(/\/+$/, "");
+		return pathname.endsWith("/v1/messages");
+	} catch {
+		return false;
+	}
 }
 
 function hasMeaningfulSuccessfulResponse(record: RawPair): boolean {
@@ -213,9 +216,6 @@ export function validateTrace(options: ValidateTraceOptions): TraceMetadata {
 	const metadataTemporary = `${metadataPath}.tmp`;
 	fs.writeFileSync(metadataTemporary, `${JSON.stringify(metadata, null, 2)}\n`);
 	fs.renameSync(metadataTemporary, metadataPath);
-	for (const duplicate of ["trace.json", "trace.html"]) {
-		fs.rmSync(path.join(options.traceDirectory, duplicate), { force: true });
-	}
 	return metadata;
 }
 

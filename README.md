@@ -427,6 +427,18 @@ codex-trace --index
 
 Scans log files, summarizes meaningful conversations via Claude CLI, and generates a searchable `index.html`. **Note:** indexing uses additional API tokens.
 
+### OpenAI SFT export
+
+```bash
+claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json]
+```
+
+Directory inputs are searched recursively for `trace.jsonl`. The command refuses to overwrite existing output and creates only the JSONL file by default. Use `--diagnostics FILE` to save request-level diagnostics; skipped and duplicate requests are also reported in the command output. Each JSONL row contains `messages`, `tools`, and `metadata`. Historical messages have `trainable: false`; each captured assistant response has `trainable: true` and a corresponding entry in `metadata.response_sources`.
+
+Inline system messages are merged into the leading system message, and Claude Code billing-header text blocks are omitted, matching vLLM's Anthropic-to-OpenAI conversion. To render the final request prompt, apply the chat template to `messages.slice(0, -1)` with `tools` and `add_generation_prompt=true`; the final assistant response remains in the SFT trajectory.
+
+Only successful `POST /v1/messages` exchanges become training targets. History changes, including compaction, create separate rows; output from a segment ending at a history break may contain tool calls without subsequent tool results. The exporter uses only HTTP traces, does not read Claude session files, and does not generate token-level loss masks.
+
 ## Requirements
 
 - Node.js 16+ (Node.js 22+ recommended for full Codex OAuth request-body display in logs)

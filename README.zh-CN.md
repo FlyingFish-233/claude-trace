@@ -427,6 +427,18 @@ codex-trace --index
 
 扫描日志文件，通过 Claude CLI 为有意义会话生成摘要，并输出可搜索的 `index.html`。**注意：** 索引会产生额外 API token 消耗。
 
+### 导出 OpenAI SFT 轨迹
+
+```bash
+claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json]
+```
+
+目录输入会递归查找 `trace.jsonl`。已有输出不会被覆盖；默认只生成 JSONL 文件。需要保存逐请求诊断时传入 `--diagnostics FILE`；跳过和去重的请求也会在命令输出中报告。每行包含 `messages`、`tools` 和 `metadata`。历史消息标记 `trainable: false`，实际响应标记 `trainable: true`，其来源记录在 `metadata.response_sources` 中。
+
+导出器会把内联 system 消息合并到开头的 system 消息，并过滤 Claude Code 的计费标头文本块，与 vLLM 的 Anthropic-to-OpenAI 转换保持一致。要渲染最后一次请求的 prompt，使用 `messages.slice(0, -1)`、`tools` 和 `add_generation_prompt=true`；最后一条 assistant 响应仍保留在 SFT 轨迹中。
+
+只有成功的 `POST /v1/messages` 请求会成为训练目标。压缩等历史变化会新建轨迹；若轨迹因历史断裂而结束，末尾工具调用可能没有后续工具结果。导出仅使用 HTTP trace，不读取 Claude session 文件，也不生成 token 级 loss mask。
+
 ## 环境要求
 
 - Node.js 16+（Codex OAuth 请求体完整日志展示建议 Node.js 22+）

@@ -17,7 +17,7 @@ Read `README.md` at the start of a session for user-facing usage, troubleshootin
 
 ## Project Summary
 
-`@hanqunfeng/claude-trace` records coding-agent API traffic and renders self-contained HTML reports. Fork of mariozechner/claude-trace with **Claude Code V2+ native binary support**, **OpenCode** via `opencode-trace`, **Codex CLI** via `codex-trace`, and standalone forward-proxy logging via `vibe-coding-proxy`.
+`@uvl000/claude-trace` records coding-agent API traffic and renders self-contained HTML reports. Fork of mariozechner/claude-trace with **Claude Code V2+ native binary support**, **OpenCode** via `opencode-trace`, **Codex CLI** via `codex-trace`, and standalone forward-proxy logging via `vibe-coding-proxy`.
 
 ## Multi-Tool Architecture
 
@@ -190,7 +190,7 @@ export function resolveModelRoute(
 
 - **Avoid `any`** — use `src/types.ts` and `@anthropic-ai/sdk/resources/messages` (`import type` only; devDependency)
 - **No self-referential npm dependency**
-- **Package:** `@hanqunfeng/claude-trace`; bins: `claude-trace`, `opencode-trace`, `codex-trace`
+- **Package:** `@uvl000/claude-trace`; bins: `claude-trace`, `opencode-trace`, `codex-trace`
 - **Log dirs** in cwd (gitignored): `.claude-trace/`, `.opencode-trace/`, `.codex-trace/`
 - **Frontend** is a separate package (`frontend/package.json`); run `npm run setup` once
 

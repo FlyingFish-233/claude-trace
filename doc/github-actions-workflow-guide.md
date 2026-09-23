@@ -766,7 +766,7 @@ ${{ ... }}
 常见值：
 
 ```text
-github.repository = hanqunfeng/claude-trace
+github.repository = FlyingFish-233/claude-trace
 github.actor      = 触发任务的 GitHub 用户
 github.sha        = 当前提交 SHA
 github.ref        = refs/heads/main 或 refs/tags/v3.0.12
@@ -2478,7 +2478,7 @@ run: npm publish --access public
 npm 发布接口成功后，公开查询可能有短暂延迟。工作流最多查询 10 次，每次等待 3 秒，确认：
 
 ```text
-npm view @hanqunfeng/claude-trace version
+npm view @uvl000/claude-trace version
 ```
 
 返回值与 `package.json.version` 一致。

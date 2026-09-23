@@ -1,7 +1,7 @@
-# 通过 npm Trusted Publishing（OIDC）发布 @hanqunfeng/claude-trace。
+# 通过 npm Trusted Publishing（OIDC）发布 @uvl000/claude-trace。
 # OIDC 使用 GitHub 临时身份凭证，不需要保存长期有效的 NPM_TOKEN。
 # 前置条件：在 npmjs.com 为本包配置 Trusted Publisher：
-# owner=hanqunfeng、repo=claude-trace、workflow=publish.yml。
+# owner=FlyingFish-233、repo=claude-trace、workflow=publish.yml。
 name: Publish
 
 # 只有推送 v 开头的 Git 标签（例如 v3.0.12）时才执行发布。
@@ -114,9 +114,9 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           for attempt in $(seq 1 10); do
-            PUBLISHED=$(npm view @hanqunfeng/claude-trace version --prefer-online 2>/dev/null || true)
+            PUBLISHED=$(npm view @uvl000/claude-trace version --prefer-online 2>/dev/null || true)
             if [ "${PUBLISHED}" = "${VERSION}" ]; then
-              echo "Verified @hanqunfeng/claude-trace@${VERSION} on npm"
+              echo "Verified @uvl000/claude-trace@${VERSION} on npm"
               exit 0
             fi
             echo "Waiting for registry sync (${attempt}/10): npm=${PUBLISHED:-<none>} local=${VERSION}"
@@ -148,7 +148,7 @@ jobs:
             --notes "$(cat <<'EOF'
           ## Install
           ```bash
-          npm install -g @hanqunfeng/claude-trace
+          npm install -g @uvl000/claude-trace
           ```
           EOF
           )"

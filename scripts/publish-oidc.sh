@@ -23,7 +23,7 @@ cd "$ROOT"
 
 # npm 包名、GitHub 仓库和负责发布的工作流文件名。
 PACKAGE="@uvl000/claude-trace"
-GITHUB_REPO="hanqunfeng/claude-trace"
+GITHUB_REPO="FlyingFish-233/claude-trace"
 WORKFLOW_FILE="publish.yml"
 # 网络查询和推送统一最多尝试 10 次，每次间隔 3 秒。
 NETWORK_MAX_ATTEMPTS=10

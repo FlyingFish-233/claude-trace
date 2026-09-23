@@ -120,7 +120,7 @@ ${colors.yellow}MIGRATION:${colors.reset}
   This tool replaces Python-based claude-logger and claude-token.py scripts
   with a pure Node.js implementation. All output formats are compatible.
 
-For more information, visit: https://github.com/hanqunfeng/claude-trace
+For more information, visit: https://github.com/FlyingFish-233/claude-trace
 `);
 }
 

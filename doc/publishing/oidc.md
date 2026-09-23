@@ -1,6 +1,6 @@
 # OIDC 发布流程（GitHub Actions）
 
-本文档说明如何通过 **npm Trusted Publishing (OIDC)** 发布 `@hanqunfeng/claude-trace`。
+本文档说明如何通过 **npm Trusted Publishing (OIDC)** 发布 `@uvl000/claude-trace`。
 
 本地机器**不执行** `npm publish`，也**不需要** npm Access Token。推送 `v*` 标签后，GitHub Actions 工作流 `.github/workflows/publish.yml` 会自动完成构建、npm 发布和 GitHub Release。
 
@@ -23,11 +23,11 @@
 
 ### 1. npm Trusted Publisher
 
-在 [npm 包设置](https://www.npmjs.com/package/@hanqunfeng/claude-trace/access) → **Trusted Publisher** → **GitHub Actions** 中配置：
+在 [npm 包设置](https://www.npmjs.com/package/@uvl000/claude-trace/access) → **Trusted Publisher** → **GitHub Actions** 中配置：
 
 | 字段 | 值 |
 |------|-----|
-| Organization or user | `hanqunfeng` |
+| Organization or user | `FlyingFish-233` |
 | Repository | `claude-trace` |
 | Workflow filename | `publish.yml` |
 | Environment name | （留空） |
@@ -106,10 +106,10 @@ npm run publish:oidc:patch      # 升版本 → 推送 tag → 监控 Actions
 ## 发布后验证
 
 ```bash
-npm view @hanqunfeng/claude-trace version
-gh run list --repo hanqunfeng/claude-trace --workflow publish.yml --limit 3
-gh release view v3.0.10 --repo hanqunfeng/claude-trace
-npm install -g @hanqunfeng/claude-trace
+npm view @uvl000/claude-trace version
+gh run list --repo FlyingFish-233/claude-trace --workflow publish.yml --limit 3
+gh release view v3.0.10 --repo FlyingFish-233/claude-trace
+npm install -g @uvl000/claude-trace
 claude-trace --help
 ```
 
@@ -142,7 +142,7 @@ claude-trace --help
 
 错误通常表现为 `E404` 或认证失败。检查 npm Trusted Publisher 配置：
 
-- owner: `hanqunfeng`
+- owner: `FlyingFish-233`
 - repo: `claude-trace`
 - workflow: `publish.yml`（仅文件名）
 
@@ -168,7 +168,7 @@ Tag v3.0.10 does not match package.json version 3.0.9
 
 ```bash
 gh release create v3.0.10 \
-  --repo hanqunfeng/claude-trace \
+  --repo FlyingFish-233/claude-trace \
   --title "v3.0.10" \
   --generate-notes
 ```
@@ -185,7 +185,7 @@ gh release create v3.0.10 \
 
 ## 相关链接
 
-- npm 包页：https://www.npmjs.com/package/@hanqunfeng/claude-trace
-- GitHub Actions：https://github.com/hanqunfeng/claude-trace/actions/workflows/publish.yml
+- npm 包页：https://www.npmjs.com/package/@uvl000/claude-trace
+- GitHub Actions：https://github.com/FlyingFish-233/claude-trace/actions/workflows/publish.yml
 - npm Trusted Publishing 文档：https://docs.npmjs.com/trusted-publishers/
 - GitHub OIDC 文档：https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect

@@ -106,7 +106,7 @@ ${colors.yellow}OUTPUT:${colors.reset}
   Logs are saved to: ${colors.green}.opencode-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,html}${colors.reset}
   With --log NAME:   ${colors.green}.opencode-trace/NAME.{jsonl,html}${colors.reset}
 
-For more information, visit: https://github.com/hanqunfeng/claude-trace
+For more information, visit: https://github.com/FlyingFish-233/claude-trace
 `);
 }
 

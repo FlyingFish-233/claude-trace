@@ -18,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # 发布账号、包名及运行时选项。
-NPM_USER="hanqunfeng"
+NPM_USER="uvl000"
 PACKAGE="@uvl000/claude-trace"
 SKIP_GITHUB=false
 GITHUB_NOTES_FILE=""
@@ -73,7 +73,7 @@ usage() {
 选项可与 patch/minor/major 组合，顺序不限。
 
 前置条件:
-  npm: ~/.npmrc 已配置 Bypass 2FA 的 Access Token（npm whoami → hanqunfeng）
+  npm: ~/.npmrc 已配置 Bypass 2FA 的 Access Token（npm whoami → uvl000）
   GitHub: 已安装并登录 gh CLI（gh auth login）
 
 详见 doc/publishing/access-token.md
@@ -91,12 +91,12 @@ get_version_tag() {
 }
 
 # 从 package.json 的 repository.url 中解析 owner/repo。
-# URL 无法识别时回退到当前项目的固定仓库 hanqunfeng/claude-trace。
+# URL 无法识别时回退到当前项目的固定仓库 FlyingFish-233/claude-trace。
 resolve_github_repo() {
 	node -p "
 		const u = require('./package.json').repository?.url || '';
 		const m = u.match(/github\\.com[:\\/](.+?)\\.git\$/) || u.match(/github\\.com[:\\/](.+)\$/);
-		m ? m[1] : 'hanqunfeng/claude-trace';
+		m ? m[1] : 'FlyingFish-233/claude-trace';
 	"
 }
 

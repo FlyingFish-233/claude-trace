@@ -1,14 +1,14 @@
 # npm 发布流程
 
-本文档说明如何使用 **Access Token** 将 `@hanqunfeng/claude-trace` 发布到 [npm 官方仓库](https://www.npmjs.com/package/@hanqunfeng/claude-trace)。
+本文档说明如何使用 **Access Token** 将 `@uvl000/claude-trace` 发布到 [npm 官方仓库](https://www.npmjs.com/package/@uvl000/claude-trace)。
 
 ## 前置条件
 
 | 项目 | 要求 |
 |------|------|
-| npm 账号 | 用户名须为 `hanqunfeng`（与 scope `@hanqunfeng` 一致） |
+| npm 账号 | 用户名须为 `uvl000`（与 scope `@uvl000` 一致） |
 | Access Token | 已创建并配置到本地 `~/.npmrc` |
-| 包名 | `@hanqunfeng/claude-trace`（作用域包，发布时需 `--access public`） |
+| 包名 | `@uvl000/claude-trace`（作用域包，发布时需 `--access public`） |
 | Node.js | >= 16 |
 
 ## 一次性配置
@@ -16,17 +16,17 @@
 ### 1. 注册与登录
 
 1. 浏览器打开 [https://www.npmjs.com](https://www.npmjs.com)
-2. 没有帐号要先进行注册，用户名须为 `hanqunfeng`（与 scope `@hanqunfeng` 一致）
+2. 没有帐号要先进行注册，用户名须为 `uvl000`（与 scope `@uvl000` 一致）
 
 
 ### 2. 创建 Access Token
 
-1. 打开 [https://www.npmjs.com/settings/hanqunfeng/tokens](https://www.npmjs.com/settings/hanqunfeng/tokens)
+1. 打开 [https://www.npmjs.com/settings/uvl000/tokens](https://www.npmjs.com/settings/uvl000/tokens)
 2. **Generate New Token** → **创建新的 Access Token** → 填写名称（如 `claude-trace-publish`）
 3. 勾选 **Bypass two-factor authentication (2FA)**（发布时必须勾选）
 4. **Packages and scopes**：
    - Permissions → **Read and write**
-   - Select packages → **Only select packages and scopes** → `@hanqunfeng`
+   - Select packages → **Only select packages and scopes** → `@uvl000`
 5. 设置 **Expiration Date**，到期后需重新创建 Token
 6. 复制生成的 Token（**只显示一次**，请妥善保存）
 
@@ -41,7 +41,7 @@ npm config set //registry.npmjs.org/:_authToken=你的token
 验证身份：
 
 ```bash
-npm whoami    # 应输出 hanqunfeng
+npm whoami    # 应输出 uvl000
 ```
 
 > **安全提示：** 不要将 Token 写入项目目录或提交到 GitHub。若泄露，立即在 npm 网站撤销并重新创建。
@@ -54,10 +54,10 @@ npm whoami    # 应输出 hanqunfeng
 # macOS
 brew install gh
 
-# 登录（需有 hanqunfeng/claude-trace 仓库的写权限）
+# 登录（需有 FlyingFish-233/claude-trace 仓库的写权限）
 gh auth login
 gh auth status    # 应显示已登录
-gh repo view hanqunfeng/claude-trace   # 确认可访问仓库
+gh repo view FlyingFish-233/claude-trace   # 确认可访问仓库
 ```
 
 若只想发布到 npm、跳过 GitHub Release，使用 `--no-github` 参数（见下方发布脚本说明）。
@@ -129,7 +129,7 @@ git tag v1.0.1
 ### 3. 确认 Token 已配置
 
 ```bash
-npm whoami    # 应输出 hanqunfeng
+npm whoami    # 应输出 uvl000
 ```
 
 若输出错误或未登录，重新执行：
@@ -153,14 +153,14 @@ npm publish --access public
 
 ```bash
 # 查看 npm 上的版本
-npm view @hanqunfeng/claude-trace version
+npm view @uvl000/claude-trace version
 
 # 全局安装测试
-npm install -g @hanqunfeng/claude-trace
+npm install -g @uvl000/claude-trace
 claude-trace --help
 ```
 
-包页面：https://www.npmjs.com/package/@hanqunfeng/claude-trace
+包页面：https://www.npmjs.com/package/@uvl000/claude-trace
 
 ## 发布脚本（推荐）
 
@@ -188,7 +188,7 @@ chmod +x scripts/publish.sh   # 首次需要
 
 ### 脚本会自动执行
 
-1. 验证 `npm whoami` 为 `hanqunfeng`
+1. 验证 `npm whoami` 为 `uvl000`
 2. 检查 git 工作区无未提交更改
 3. `npm run typecheck` + `npm run build` + CLI 冒烟测试
 4. `npm pack --dry-run` 预览发布内容
@@ -208,7 +208,7 @@ npm run typecheck
 npm version patch
 git push && git push --tags
 npm publish --access public
-npm view @hanqunfeng/claude-trace version
+npm view @uvl000/claude-trace version
 ```
 
 ## 常见问题
@@ -243,7 +243,7 @@ npm config set //registry.npmjs.org/:_authToken=新token
 
 ### E403：无权发布此包
 
-**处理：** 确认 `npm whoami` 为 `hanqunfeng`；Token 的 scope 须包含 `@hanqunfeng`。
+**处理：** 确认 `npm whoami` 为 `uvl000`；Token 的 scope 须包含 `@uvl000`。
 
 ### 发布后用户安装失败
 
@@ -253,7 +253,7 @@ npm config set //registry.npmjs.org/:_authToken=新token
 
 Token 到期前：
 
-1. 在 [npm Tokens 页面](https://www.npmjs.com/settings/hanqunfeng/tokens) 创建新 Token
+1. 在 [npm Tokens 页面](https://www.npmjs.com/settings/uvl000/tokens) 创建新 Token
 2. 更新本地配置：`npm config set //registry.npmjs.org/:_authToken=新token`
 3. 验证：`npm whoami`
 4. 撤销旧 Token
@@ -272,11 +272,11 @@ Release 说明默认由 GitHub 根据 commit/PR 自动生成，并在顶部附�
 ./scripts/publish.sh --github-notes RELEASE.md patch
 ```
 
-Release 页面示例：https://github.com/hanqunfeng/claude-trace/releases
+Release 页面示例：https://github.com/FlyingFish-233/claude-trace/releases
 
 ## 相关链接
 
-- npm 包页：https://www.npmjs.com/package/@hanqunfeng/claude-trace
-- Token 管理：https://www.npmjs.com/settings/hanqunfeng/tokens
-- GitHub 仓库：https://github.com/hanqunfeng/claude-trace
-- 用户安装：`npm install -g @hanqunfeng/claude-trace`
+- npm 包页：https://www.npmjs.com/package/@uvl000/claude-trace
+- Token 管理：https://www.npmjs.com/settings/uvl000/tokens
+- GitHub 仓库：https://github.com/FlyingFish-233/claude-trace
+- 用户安装：`npm install -g @uvl000/claude-trace`

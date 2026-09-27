@@ -4,15 +4,13 @@
 
 本地机器**不执行** `npm publish`，也**不需要** npm Access Token。推送 `v*` 标签后，GitHub Actions 工作流 `.github/workflows/publish.yml` 会自动完成构建、npm 发布和 GitHub Release。
 
-> 传统的 Access Token 本地发布方式见 [Access Token 发布流程](./access-token.md) 与 `scripts/publish.sh`。
-
 > 如果通过 HTTPS 使用 GitHub Personal Access Token（classic）执行 `git push`，该 Token 除了仓库写入权限外，还必须勾选 `workflow` scope（Update GitHub Action workflows）；否则无法新增或修改 `.github/workflows/` 下的 Workflow 文件。
 
 ## 架构
 
 ```
-本地 publish-oidc.sh
-  → git push + git push tag vX.Y.Z
+本地 npm version + git push
+  → git push commit + tag vX.Y.Z
     → GitHub Actions (publish.yml)
       → typecheck / test / build
       → npm publish（OIDC，无需 NPM_TOKEN）
@@ -35,80 +33,41 @@
 
 > 工作流文件名只填 `publish.yml`，不要写完整路径。
 
-### 2. GitHub CLI
-
-```bash
-brew install gh          # macOS
-gh auth login
-gh auth status           # 应显示已登录
-```
-
-### 3. 脚本可执行权限（首次）
-
-```bash
-chmod +x scripts/publish-oidc.sh
-```
-
 ## 标准发布（推荐）
 
 ```bash
-# 补丁版本（最常用）
-npm run publish:oidc:patch
-
-# 或手动分步
 git checkout main
-git pull
-npm run publish:oidc:check    # 可选：本地检查
-npm run publish:oidc:patch      # 升版本 → 推送 tag → 监控 Actions
+npm run typecheck
+npm run test:unit
+npm run build
+npm pack --dry-run
+npm version patch -m "chore: release v%s"
+git push origin HEAD
+git push origin "$(git describe --tags --exact-match HEAD)"
 ```
 
-脚本会自动：
+`npm version patch` 会创建版本提交和匹配的 `vX.Y.Z` 标签。推送标签后，GitHub Actions 会自动发布。
 
-1. 检查 git 工作区干净
-2. 运行 typecheck、单测、构建、pack 预览
-3. `npm version patch` 升版本并创建 commit + tag
-4. 推送 commit 和 `vX.Y.Z` 标签
-5. 监控 GitHub Actions 工作流直到完成
-6. 验证 npm 注册表上的版本
+发布流程为：
 
-## 命令参考
-
-### npm scripts
-
-| 命令 | 说明 |
-|------|------|
-| `npm run publish:oidc:check` | 仅本地检查 |
-| `npm run publish:oidc:dry-run` | 检查 + 预览将执行的操作 |
-| `npm run publish:oidc:patch` | 升补丁版本并触发 OIDC 发布 |
-| `npm run publish:oidc:minor` | 升次版本并触发 OIDC 发布 |
-| `npm run publish:oidc:major` | 升主版本并触发 OIDC 发布 |
-| `npm run publish:oidc` | 不升版本，推送当前版本 tag |
-
-### 脚本直接调用
-
-```bash
-./scripts/publish-oidc.sh --check
-./scripts/publish-oidc.sh --dry-run
-./scripts/publish-oidc.sh patch
-./scripts/publish-oidc.sh minor
-./scripts/publish-oidc.sh major
-./scripts/publish-oidc.sh --no-watch patch   # 推送后不等待 Actions
-```
+1. 本地运行检查、测试和构建
+2. `npm version patch` 升版本并创建 commit + tag
+3. 推送 commit 和 `vX.Y.Z` 标签
+4. GitHub Actions 自动构建并通过 OIDC 发布
+5. 在 GitHub Actions 页面和 npm 注册表验证结果
 
 ## 版本选择
 
 | 变更类型 | 命令 | 示例 |
 |----------|------|------|
-| Bug 修复 | `npm run publish:oidc:patch` | 3.0.9 → 3.0.10 |
-| 新功能（向后兼容） | `npm run publish:oidc:minor` | 3.0.9 → 3.1.0 |
-| 破坏性变更 | `npm run publish:oidc:major` | 3.0.9 → 4.0.0 |
+| Bug 修复 | `npm version patch` | 3.0.9 → 3.0.10 |
+| 新功能（向后兼容） | `npm version minor` | 3.0.9 → 3.1.0 |
+| 破坏性变更 | `npm version major` | 3.0.9 → 4.0.0 |
 
 ## 发布后验证
 
 ```bash
 npm view @uvl000/claude-trace version
-gh run list --repo FlyingFish-233/claude-trace --workflow publish.yml --limit 3
-gh release view v3.0.10 --repo FlyingFish-233/claude-trace
 npm install -g @uvl000/claude-trace
 claude-trace --help
 ```
@@ -162,26 +121,9 @@ Tag v3.0.10 does not match package.json version 3.0.9
 
 处理：升版本后重新发布，不要重复推送同一版本 tag。
 
-### 需要补建 GitHub Release
+## 发布方式
 
-若通过 `workflow_dispatch` 发布了 npm 但未创建 Release：
-
-```bash
-gh release create v3.0.10 \
-  --repo FlyingFish-233/claude-trace \
-  --title "v3.0.10" \
-  --generate-notes
-```
-
-## 与本地 Token 发布的对比
-
-| | OIDC（本文档） | Access Token（[access-token.md](./access-token.md)） |
-|--|----------------|-------------------------------|
-| npm Token | 不需要 | 需要 Bypass 2FA Token |
-| 发布执行方 | GitHub Actions | 本地 `npm publish` |
-| GitHub Release | 自动（tag 触发） | `publish.sh` 通过 gh CLI |
-| 脚本 | `scripts/publish-oidc.sh` | `scripts/publish.sh` |
-| 安全性 | 短期 OIDC 凭证 | 长期 Token |
+本项目统一使用 GitHub Actions 的 npm Trusted Publishing。发布任务在 GitHub 托管 Runner 中获取短期 OIDC 凭证，成功后自动创建 GitHub Release；本地不保存 npm 发布 Token。
 
 ## 相关链接
 

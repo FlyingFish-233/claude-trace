@@ -480,7 +480,6 @@ Maintainer and contributor docs live under [`doc/`](doc/):
 | Document | Description |
 |----------|-------------|
 | [doc/publishing/oidc.md](doc/publishing/oidc.md) | Recommended npm release via GitHub Actions OIDC |
-| [doc/publishing/access-token.md](doc/publishing/access-token.md) | Legacy local release with npm Access Token |
 | [doc/github-actions-workflow-guide.md](doc/github-actions-workflow-guide.md) | GitHub Actions workflow reference and examples |
 | [doc/npm-v12-security-changelog.md](doc/npm-v12-security-changelog.md) | npm v12 install-time security and GAT deprecation notes |
 

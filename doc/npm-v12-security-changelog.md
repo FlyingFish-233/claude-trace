@@ -97,7 +97,7 @@ GitHub/npm 将在未来数月内提供更多迁移工具与指南，并在后续
 |------|------|
 | npm v12 安装脚本默认关闭 | 若 CI/本地 `npm install` 依赖 postinstall 脚本，需运行 `npm approve-scripts` 并提交 allowlist |
 | GAT bypass2fa 弃用 | 若仍用长期 Token 本地发布，应迁移至 OIDC；本项目 [OIDC 发布流程](./publishing/oidc.md) 已覆盖推荐路径 |
-| 直接 publish Token 弃用 | `scripts/publish.sh` 等传统 Token 发布方式需逐步淘汰，优先使用 `.github/workflows/publish.yml` |
+| 直接 publish Token 弃用 | 传统本地 Token 发布方式已移除，统一使用 `.github/workflows/publish.yml` |
 
 ---
 

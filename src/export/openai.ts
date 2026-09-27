@@ -270,9 +270,12 @@ function convertTools(tools: any): JsonObject[] {
 
 function compactionMarkers(body: JsonObject): string[] {
 	const contents = [body.system, ...body.messages.map((message: any) => message.content)];
-	return contents.map((content) => textContent(content)).filter((content) =>
-		/<summary>|<conversation_summary>|conversation (?:has been|was) compacted|summary of the conversation so far|this session is being continued from a previous conversation/i.test(content),
-	);
+	return contents.map((content) => textContent(content)).filter((content) => {
+		// Task notifications can embed a generic <summary> block; only a standalone
+		// summary block represents a compaction marker.
+		const standaloneSummary = /^<summary\b[\s\S]*<\/summary>$/i.test(content.trim());
+		return standaloneSummary || /<conversation_summary>|conversation (?:has been|was) compacted|summary of the conversation so far|this session is being continued from a previous conversation/i.test(content);
+	});
 }
 
 function unmatchedToolResults(messages: any[]): number {

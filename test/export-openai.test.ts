@@ -150,6 +150,20 @@ describe("OpenAI trace export", () => {
 		});
 	});
 
+	it("ignores summaries embedded in task notifications", async () => {
+		const first = pair(100, [user("task")], answer("work"));
+		const notification = "[SYSTEM NOTIFICATION]\n<task-notification>\n<summary>Agent \"Find QDP reader code\" finished</summary>\n</task-notification>";
+		const second = pair(200, [user("task"), assistant("work"), user(notification)], answer("continued"));
+		await fixture({ source: [first, second] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			const trajectory = read(output)[0];
+			assert.equal(diagnostics.counts.compaction || 0, 0);
+			assert.equal(diagnostics.counts.continued, 1);
+			assert.equal(trajectory.metadata.segment_reason, "initial");
+			assert.equal(trajectory.messages.at(-1).content, "continued");
+		});
+	});
+
 	it("converts streamed thinking, tool calls and tool results", async () => {
 		const events = [
 			{ type: "message_start", message: { role: "assistant" } },

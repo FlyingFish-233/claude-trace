@@ -430,7 +430,7 @@ Scans log files, summarizes meaningful conversations via Claude CLI, and generat
 ### OpenAI SFT export
 
 ```bash
-claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json]
+claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json] [--filter-system-messages]
 ```
 
 Directory inputs are searched recursively for `trace.jsonl`. The command refuses to overwrite existing output and creates only the JSONL file by default. Use `--diagnostics FILE` to save request-level diagnostics; skipped and duplicate requests are also reported in the command output. Each JSONL row contains `messages`, `tools`, and `metadata`. Historical messages have `trainable: false`; each captured assistant response has `trainable: true` and a corresponding entry in `metadata.response_sources`.

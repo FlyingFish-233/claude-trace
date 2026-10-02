@@ -129,6 +129,75 @@ describe("OpenAI trace export", () => {
 		});
 	});
 
+	it("starts a new trajectory when Claude Code rewrites a Bash command", async () => {
+		const tool = (command: string) => ({ type: "tool_use", id: "call-1", name: "Bash", input: { command } });
+		const firstResponse = { role: "assistant", content: [
+			{ type: "text", text: "Run this" }, tool("cd /testbed && git status"), { type: "text", text: "\n" },
+		] };
+		const rewritten = { role: "assistant", content: [
+			{ type: "text", text: "Run this" }, tool("git status"),
+		] };
+		const first = pair(100, [user("task")], firstResponse);
+		const second = pair(200, [user("task"), rewritten, user("result")], answer("done"));
+		await fixture({ source: [first, second] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			const records = read(output);
+			assert.equal(diagnostics.counts.divergent_history, 1);
+			assert.equal(records.length, 2);
+			assert.equal(records[0].messages.find((message: any) => message.tool_calls).tool_calls[0].function.arguments.command,
+				"cd /testbed && git status");
+			assert.equal(records[1].messages.find((message: any) => message.tool_calls).tool_calls[0].function.arguments.command,
+				"git status");
+		});
+	});
+
+	it("drops blank text blocks from text-only response content when matching history", async () => {
+		const first = pair(100, [user("task")], { role: "assistant", content: [
+			{ type: "text", text: "one" }, { type: "text", text: "\n" },
+		] });
+		const second = pair(200, [user("task"), { role: "assistant", content: [{ type: "text", text: "one" }] }, user("next")], answer("done"));
+		await fixture({ source: [first, second] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			assert.equal(diagnostics.counts.continued, 1);
+			assert.equal(read(output).length, 1);
+		});
+	});
+
+	it("does not equate different Bash commands", async () => {
+		const tool = (command: string) => ({ role: "assistant", content: [
+			{ type: "tool_use", id: "call-1", name: "Bash", input: { command } },
+		] });
+		await fixture({ source: [
+			pair(100, [user("task")], tool("cd /testbed && git status")),
+			pair(200, [user("task"), tool("git diff"), user("next")], answer("done")),
+		] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			assert.equal(read(output).length, 2);
+			assert.equal(diagnostics.counts.divergent_history, 1);
+		});
+	});
+
+	it("optionally removes system messages after the first before merging", async () => {
+		const initial = { role: "system", content: [{ type: "text", text: "Agent types", cache_control: { type: "ephemeral" } }] };
+		const reminder = { role: "system", content: [{ type: "text", text: "Reminder" }] };
+		const first = pair(100, [user("task"), initial], answer("one"));
+		const second = pair(200, [user("task"), { role: "system", content: "Agent types" }, assistant("one"), user("next"), reminder], answer("two"));
+		await fixture({ source: [first, second] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output, undefined, { filterSystemMessages: true });
+			const record = read(output)[0];
+			assert.equal(read(output).length, 1);
+			assert.equal(diagnostics.counts.continued, 1);
+			assert.equal(diagnostics.counts.filtered_system_messages, 1);
+			assert.equal(record.messages[0].content, "InstructionsAgent types");
+			assert.equal(record.messages.at(-1).content, "two");
+		});
+		await fixture({ source: [first, second] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			assert.equal(read(output).length, 2);
+			assert.equal(diagnostics.counts.system_or_tools_changed, 1);
+		});
+	});
+
 	it("starts a new segment for each explicit compaction context", async () => {
 		const records = [
 			pair(100, [user("original task")], answer("work")),

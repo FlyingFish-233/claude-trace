@@ -74,10 +74,11 @@ function stable(value: any): any {
 function normalizeContent(content: any): any {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		if (content.every((block) => block?.type === "text" && typeof block.text === "string")) {
-			return content.map((block) => block.text).join("");
+		const meaningful = content.filter((block) => block?.type !== "text" || typeof block.text !== "string" || block.text.trim());
+		if (meaningful.every((block) => block?.type === "text" && typeof block.text === "string")) {
+			return meaningful.map((block) => block.text).join("");
 		}
-		return content.map((block) => {
+		return meaningful.map((block) => {
 			if (block?.type === "tool_result") {
 				return stable({ ...block, content: normalizeContent(block.content) });
 			}
@@ -298,6 +299,17 @@ function responseMatches(response: any, message: any): boolean {
 	return key(normalizeMessage(response)) === key(normalizeMessage(message));
 }
 
+function filterSystemMessages(messages: any[]): { messages: any[]; removed: number } {
+	let seenSystem = false;
+	const filtered = messages.filter((message) => {
+		if (message?.role !== "system") return true;
+		if (seenSystem) return false;
+		seenSystem = true;
+		return true;
+	});
+	return { messages: filtered, removed: messages.length - filtered.length };
+}
+
 function parameters(body: JsonObject): JsonObject {
 	const { messages: _messages, system: _system, tools: _tools, metadata: _metadata, ...remaining } = body;
 	return stable(remaining);
@@ -307,7 +319,10 @@ function bump(counts: Record<string, number>, name: string, amount = 1): void {
 	counts[name] = (counts[name] || 0) + amount;
 }
 
-export async function exportOpenAI(inputPaths: string[], outputPath: string, diagnosticsOutputPath?: string): Promise<ExportDiagnostics> {
+export async function exportOpenAI(
+	inputPaths: string[], outputPath: string, diagnosticsOutputPath?: string,
+	options: { filterSystemMessages?: boolean } = {},
+): Promise<ExportDiagnostics> {
 	if (!inputPaths.length) throw new Error("at least one --input is required");
 	const output = path.resolve(outputPath);
 	const diagnosticsPath = diagnosticsOutputPath ? path.resolve(diagnosticsOutputPath) : null;
@@ -362,12 +377,16 @@ export async function exportOpenAI(inputPaths: string[], outputPath: string, dia
 			diagnostics.requests.push({ source, status: "skipped", reason });
 			continue;
 		}
-		const body = pair.request.body;
+		const rawBody = pair.request.body;
+		const filtered = options.filterSystemMessages && Array.isArray(rawBody?.messages)
+			? filterSystemMessages(rawBody.messages) : null;
+		const body = filtered ? { ...rawBody, messages: filtered.messages } : rawBody;
 		if (!body || !Array.isArray(body.messages)) {
 			bump(diagnostics.counts, "invalid_request_messages");
 			diagnostics.requests.push({ source, status: "skipped", reason: "invalid_request_messages" });
 			continue;
 		}
+		if (filtered?.removed) bump(diagnostics.counts, "filtered_system_messages", filtered.removed);
 		const system = effectiveSystem(body);
 		const systemKey = key(system);
 		const toolsKey = key(body.tools || []);

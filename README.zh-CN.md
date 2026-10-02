@@ -430,7 +430,7 @@ codex-trace --index
 ### 导出 OpenAI SFT 轨迹
 
 ```bash
-claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json]
+claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json] [--filter-system-messages]
 ```
 
 目录输入会递归查找 `trace.jsonl`。已有输出不会被覆盖；默认只生成 JSONL 文件。需要保存逐请求诊断时传入 `--diagnostics FILE`；跳过和去重的请求也会在命令输出中报告。每行包含 `messages`、`tools` 和 `metadata`。历史消息标记 `trainable: false`，实际响应标记 `trainable: true`，其来源记录在 `metadata.response_sources` 中。

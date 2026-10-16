@@ -44,6 +44,11 @@ export/validate/report 的 `--input` 可重复，接受文件或目录；目录�
 2. `--filter-system-messages`：只保留第一条 system。
 3. `--merge-system-messages`：剩余 system 用双换行拼接并置于开头。
 
+启用合并时，可用 `--merge-system-separator TEXT` 显式指定分隔符。对于直接拼接 inline
+system 的 vLLM Messages 接口，使用 `--merge-system-messages --merge-system-separator ''`。
+所有协议的默认分隔符仍为双换行。导出规范化会过滤 system 中的 billing 标记，按换行拼接
+OpenAI 文本块，并按稳定顺序输出 Responses 函数字段；采集原文和 replay 请求内容不变。
+
 Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/合并不依赖 developer 转换，未转换 developer 保留原位。轨迹关联使用转换前历史，按 run、协议、明确 session header 隔离；工具变化、歧义、压缩或历史分叉新建片段。不会跨运行拼接。
 
 ## 校验与报告

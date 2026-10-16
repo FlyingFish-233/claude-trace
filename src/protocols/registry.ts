@@ -37,7 +37,7 @@ export function parseSSE(raw: string): { events: Json[]; done: boolean } {
 }
 
 /** Join only supported text blocks; unsupported modalities must remain raw, not become fake text. */
-function text(value: any): string {
+function text(value: any, separator = ""): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
   if (!Array.isArray(value)) throw new Error("invalid_text_content");
@@ -45,7 +45,17 @@ function text(value: any): string {
     if (typeof part === "string") return part;
     if (!["text", "input_text", "output_text"].includes(part?.type) || typeof part.text !== "string") throw new Error(`unsupported_content_${part?.type}`);
     return part.text;
-  }).join("");
+  }).filter(part => part !== "").join(separator);
+}
+
+/** Remove billing attribution from derived system text; captured bodies remain untouched. */
+function systemText(value: any, protocol: Protocol): string {
+  const parts = Array.isArray(value) ? value : [value];
+  return parts.map(part => {
+    const content = text(part == null || typeof part === "string" ? part : [part]);
+    if (!content.startsWith("x-anthropic-billing-header")) return content;
+    return protocol === "anthropic-messages" ? "" : content.split("\n").slice(1).join("\n");
+  }).filter(Boolean).join(protocol === "anthropic-messages" ? "" : "\n");
 }
 
 /** Parse tool arguments as JSON objects, retaining the original string only in raw storage. */
@@ -71,6 +81,14 @@ function tools(value: any, protocol: Protocol): Json[] {
       const fn = protocol === "openai-chat-completions" ? object(member.function) : member;
       if (typeof fn.name !== "string") throw new Error("invalid_tool_name");
       const { type: _type, ...definition } = fn;
+      if (protocol === "openai-responses") {
+        const { name, description, parameters, strict, defer_loading, ...extensions } = definition;
+        return { type: "function", function: {
+          name: entry.type === "namespace" ? `${entry.name}__${name}` : name,
+          description: description ?? null, parameters: parameters ?? null,
+          ...(strict != null ? { strict } : {}), ...(defer_loading != null ? { defer_loading } : {}), ...extensions,
+        } };
+      }
       return { type: "function", function: { ...definition, name: entry.type === "namespace" ? `${entry.name}__${fn.name}` : fn.name } };
     });
   });
@@ -82,7 +100,7 @@ function tools(value: any, protocol: Protocol): Json[] {
 function chatMessage(value: any): Json {
   const message = object(value, "message");
   if (!["system", "developer", "user", "assistant", "tool"].includes(message.role)) throw new Error(`unsupported_role_${message.role}`);
-  const result: Json = { role: message.role, content: text(message.content) };
+  const result: Json = { role: message.role, content: message.role === "system" ? systemText(message.content, "openai-chat-completions") : text(message.content, "\n") };
   for (const key of ["name", "task", "tools", "tool_call_id", "reasoning_content"]) if (message[key] !== undefined) result[key] = message[key];
   if (message.reasoning !== undefined) {
     if (typeof message.reasoning !== "string") throw new Error("unsupported_reasoning_structure");
@@ -109,6 +127,10 @@ function chatMessage(value: any): Json {
 
 /** Preserve Anthropic user/tool-result order and separate thinking from visible text. */
 function anthropicMessage(message: Json): Json[] {
+  if (message.role === "system") {
+    const content = systemText(message.content, "anthropic-messages");
+    return content ? [{ role: "system", content }] : [];
+  }
   if (typeof message.content === "string") return [chatMessage(message)];
   if (!Array.isArray(message.content)) throw new Error("invalid_message_content");
   if (["system", "developer"].includes(message.role)) return [chatMessage(message)];
@@ -156,7 +178,7 @@ function responseItems(items: any, reasoning: Json[]): Json[] {
       } });
     } else if (item.type === "function_call_output") {
       if (!item.call_id) throw new Error("missing_tool_call_id");
-      result.push({ role: "tool", tool_call_id: item.call_id, content: text(item.output) });
+      result.push({ role: "tool", tool_call_id: item.call_id, content: text(item.output, "\n") });
     } else if (item.type === "reasoning") {
       if (item.summary?.length || item.encrypted_content) reasoning.push({ id: item.id, summary: item.summary, encrypted: Boolean(item.encrypted_content) });
       const full = (item.content || []).map((block: Json) => {
@@ -303,13 +325,15 @@ function convert(record: TraceRecord, id: Protocol): ConvertedTurn {
   if (id === "openai-responses") {
     requireSelfContained(body);
     history = typeof body.input === "string" ? [{ role: "user", content: body.input }] : responseItems(body.input, metadata);
-    if (body.instructions) history.unshift({ role: "system", content: text(body.instructions) });
+    const instructions = systemText(body.instructions, id);
+    if (instructions) history.unshift({ role: "system", content: instructions });
     answer = responseItems(response.output, metadata);
   } else {
     if (!Array.isArray(body.messages)) throw new Error("invalid_messages");
     if (id === "anthropic-messages") {
       history = body.messages.flatMap(anthropicMessage);
-      if (body.system) history.unshift({ role: "system", content: text(body.system) });
+      const system = systemText(body.system, id);
+      if (system) history.unshift({ role: "system", content: system });
       answer = anthropicMessage(response);
     } else {
       history = body.messages.map(chatMessage);

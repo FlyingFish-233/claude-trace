@@ -44,6 +44,13 @@ All transformations default off and apply after normalization, in this order:
 2. `--filter-system-messages`: retain only the first system message.
 3. `--merge-system-messages`: join remaining systems with two newlines and move them to the beginning.
 
+`--merge-system-separator TEXT` overrides the separator only when merging is enabled.
+For vLLM Messages targets that concatenate inline systems without a delimiter, use
+`--merge-system-messages --merge-system-separator ''`. The default remains two newlines
+for every protocol. Export normalization removes billing attribution from system
+content, joins OpenAI text blocks with newlines and emits Responses function fields
+in stable template order. Raw capture and replay requests retain their original content.
+
 Anthropic `system` and Responses `instructions` first become leading system messages. Filter/merge work without developer conversion. Association uses pre-transformation histories, partitioned by run, protocol and explicit session header. Changed tools, ambiguity, compaction or divergent histories create new segments. No cross-run merging.
 
 ### Validate and report

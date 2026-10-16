@@ -10,6 +10,7 @@ import { parseOptions, required, integer, UsageError } from "./arguments";
 const help=`llm-trace capture --upstream URL --log-dir DIR [--api-format auto|FORMAT] [--port N] [--host HOST]
 llm-trace export --input PATH [--input PATH...] --output FILE
   [--convert-developer-to-system] [--filter-system-messages] [--merge-system-messages]
+  [--merge-system-separator TEXT] (requires --merge-system-messages; default: two newlines)
 llm-trace validate --input PATH [--input PATH...] --output FILE [--outcome complete|incomplete]
 llm-trace report --input PATH [--input PATH...] --output FILE
 llm-trace replay --input FILE --base-url URL (--line-number N... | --seed N)
@@ -56,14 +57,15 @@ export async function main(argv=process.argv.slice(2)):Promise<void> {
     console.log(JSON.stringify(result));if(result.results.some((r:any)=>!r.capture_complete||!r.protocol_valid||!r.http_success||!r.model_complete))process.exitCode=1;return;
   }
   if(!["export","validate","report"].includes(command))throw new UsageError(`Unknown command: ${command}`);
-  const o=parseOptions(args,["--input","--output",...(command==="validate"?["--outcome"]:[])],command==="export"?["--convert-developer-to-system","--filter-system-messages","--merge-system-messages"]:[],["--input"]);
+  const o=parseOptions(args,["--input","--output",...(command==="validate"?["--outcome"]:command==="export"?["--merge-system-separator"]:[])],command==="export"?["--convert-developer-to-system","--filter-system-messages","--merge-system-messages"]:[],["--input"]);
+  if(o["--merge-system-separator"]&&!o["--merge-system-messages"])throw new UsageError("--merge-system-separator requires --merge-system-messages");
   required(o,"--input");const output=required(o,"--output");
   if(command==="validate") {
     const outcome=o["--outcome"]?.[0]||"complete";if(!["complete","incomplete"].includes(outcome))throw new UsageError("Invalid --outcome");
     const result=validateTraces(o["--input"],output,outcome as "complete"|"incomplete");console.log(JSON.stringify(result.counts));
     if(!result.capture_complete||!result.protocol_valid)process.exitCode=1;
   }else if(command==="export") console.log(JSON.stringify(exportTraces(o["--input"],output,{
-    convertDeveloperToSystem:!!o["--convert-developer-to-system"],filterSystemMessages:!!o["--filter-system-messages"],mergeSystemMessages:!!o["--merge-system-messages"]}).counts));
+    convertDeveloperToSystem:!!o["--convert-developer-to-system"],filterSystemMessages:!!o["--filter-system-messages"],mergeSystemMessages:!!o["--merge-system-messages"],mergeSystemSeparator:o["--merge-system-separator"]?.[0]}).counts));
   else await reportTraces(o["--input"],output);
 }
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=error instanceof UsageError?2:1;});

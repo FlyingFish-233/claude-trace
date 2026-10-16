@@ -14,6 +14,10 @@ function key(value: any): string {
 
 /** One shared policy sequence: developer conversion, first-system filter, then merge. */
 export function transformMessages(messages: Json[], options: ExportOptions): Json[] {
+  if (options.mergeSystemSeparator !== undefined) {
+    if (typeof options.mergeSystemSeparator !== "string") throw new Error("invalid_merge_system_separator");
+    if (!options.mergeSystemMessages) throw new Error("merge_system_separator_requires_merge");
+  }
   let output = messages.map(message => ({ ...message }));
   if (options.convertDeveloperToSystem) output = output.map(message => {
     if (message.role !== "developer") return message;
@@ -27,7 +31,7 @@ export function transformMessages(messages: Json[], options: ExportOptions): Jso
   }
   if (options.mergeSystemMessages) {
     const systems = output.filter(message => message.role === "system");
-    output = [...(systems.length ? [{ role: "system", content: systems.map(m => m.content).join("\n\n"), trainable: false }] : []), ...output.filter(m => m.role !== "system")];
+    output = [...(systems.length ? [{ role: "system", content: systems.map(m => m.content).join(options.mergeSystemSeparator ?? "\n\n"), trainable: false }] : []), ...output.filter(m => m.role !== "system")];
   }
   return output;
 }

@@ -127,6 +127,44 @@ test("all system-policy combinations preserve developer order and do not require
   assert.equal(messages[2].role,"developer");assert.throws(()=>transformMessages([{role:"developer",content:"x",tools:[]}],{convertDeveloperToSystem:true}),/developer_metadata/);
 });
 
+test("Anthropic export removes billing blocks and supports explicit system separators without changing raw data",t=>{
+  const root=workspace(t),w=new TraceWriter(path.join(root,"source")),f=fixture("anthropic-messages");
+  f.request.system=[{type:"text",text:"x-anthropic-billing-header: changing"},{type:"text",text:"policy"},{type:"text",text:" context"}];
+  f.request.messages=[{role:"user",content:"q"},{role:"system",content:[{type:"text",text:"x-anthropic-billing-header: inline"},{type:"text",text:"reminder"}]}];
+  const record=write(w,"anthropic-messages",f.request,f.response);w.stop();
+  const before=fs.readFileSync(w.file,"utf8");
+  assert.ok(before.includes("x-anthropic-billing-header"));
+  const turn=adapters["anthropic-messages"].convert(record);
+  assert.deepEqual(turn.history,[{role:"system",content:"policy context"},{role:"user",content:"q"},{role:"system",content:"reminder"}]);
+  for(const separator of [undefined,"","\n"]){
+    const output=path.join(root,`export-${separator===undefined?"default":separator===""?"empty":"newline"}.jsonl`);
+    exportTraces([w.file],output,{mergeSystemMessages:true,mergeSystemSeparator:separator});
+    assert.equal(JSON.parse(fs.readFileSync(output,"utf8")).messages[0].content,`policy context${separator??"\n\n"}reminder`);
+  }
+  assert.equal(fs.readFileSync(w.file,"utf8"),before);
+  assert.throws(()=>transformMessages(turn.history,{mergeSystemSeparator:""}),/requires_merge/);
+});
+
+for(const protocol of ["openai-responses","openai-chat-completions"] as const)test(`${protocol}: text blocks retain template newlines and system billing lines are excluded`,t=>{
+  const root=workspace(t),w=new TraceWriter(path.join(root,"source")),f=fixture(protocol);
+  const messages=[{role:"system",content:[{type:"text",text:"x-anthropic-billing-header: volatile\npolicy"},{type:"text",text:"second"}]},
+    {role:"user",content:[{type:"text",text:"first"},{type:"text",text:""},{type:"text",text:"second"}]}];
+  if(protocol==="openai-responses"){f.request.input=messages;delete f.request.instructions;}else f.request.messages=messages;
+  const record=write(w,protocol,f.request,f.response);w.stop();
+  assert.deepEqual(adapters[protocol].convert(record).history,[{role:"system",content:"policy\nsecond"},{role:"user",content:"first\nsecond"}]);
+  assert.deepEqual(record.request.body,f.request);
+});
+
+test("Responses function schemas use stable template field order, defaults and namespace names",t=>{
+  const root=workspace(t),w=new TraceWriter(path.join(root,"source")),f=fixture("openai-responses");
+  f.request.tools=[{type:"namespace",name:"shell",tools:[{type:"function",strict:false,name:"exec",defer_loading:true,description:"run",parameters:{type:"object"}}]}, {type:"function",name:"empty"}];
+  const record=write(w,"openai-responses",f.request,f.response);w.stop();
+  assert.equal(JSON.stringify(adapters["openai-responses"].convert(record).tools),JSON.stringify([
+    {type:"function",function:{name:"shell__exec",description:"run",parameters:{type:"object"},strict:false,defer_loading:true}},
+    {type:"function",function:{name:"empty",description:null,parameters:null}},
+  ]));
+});
+
 test("Chat tool closure joins turns using raw history; forks, sessions, runs and changed tools segment",t=>{
   const root=workspace(t),w=new TraceWriter(path.join(root,"one")),f=fixture("openai-chat-completions");
   f.request.messages=[{role:"user",content:"q"}];f.request.tools=[{type:"function",function:{name:"search",parameters:{type:"object"}}}];
@@ -230,6 +268,8 @@ test("offline CLI does not discover clients, obeys exit codes and rejects remove
   assert.equal(run(["validate","--input",w.file]).status,2);
   assert.equal(run(["replay","--input",w.file,"--base-url","http://localhost/v1"]).status,2);
   assert.equal(run(["export","--input",w.file,"--output",path.join(root,"train.jsonl"),"--merge-system-messages"]).status,0);
+  assert.equal(run(["export","--input",w.file,"--output",path.join(root,"empty-separator.jsonl"),"--merge-system-messages","--merge-system-separator",""]).status,0);
+  assert.equal(run(["export","--input",w.file,"--output",path.join(root,"invalid-separator.jsonl"),"--merge-system-separator",""]).status,2);
   assert.equal(run(["report","--input",w.file,"--output",path.join(root,"report.html")]).status,0);
   assert.deepEqual(fs.readFileSync(w.file),before);
   for(const script of ["cli","codex-cli","opencode-cli"]){

@@ -30,6 +30,7 @@ Existing Claude/Codex config overlays and OpenCode provider/model routing are ke
 ## Options and tests
 
 Export options apply in fixed order: convertDeveloperToSystem, filterSystemMessages, mergeSystemMessages. All false by default. Association uses histories before these transforms.
+mergeSystemSeparator defaults to two newlines and requires merging; an explicit empty string supports vLLM Messages concatenation. Preserve template normalization regressions: billing attribution is excluded from derived systems, OpenAI text blocks use newlines, and Responses function fields have stable serialization order. These rules must never alter captured or forwarded payloads.
 Validation separates capture completeness, protocol validity, HTTP outcome and model completion. Complete HTTP errors are not successful training samples. Do not mutate inputs.
 Replay preserves stream and parameters by default, requires line selection or seed and an explicit full API prefix, and never reuses original authentication.
 Add meaningful mock-upstream tests for protocol/transport changes, including raw payload equality, streaming interruption, cancellation and profile configuration overrides. Test compiled CLI and offline bundle entry points after building. `scripts/pack-workflowexp.sh` requires a clean Git checkout.

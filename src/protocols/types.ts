@@ -23,6 +23,8 @@ export interface ExportOptions {
   convertDeveloperToSystem?: boolean;
   filterSystemMessages?: boolean;
   mergeSystemMessages?: boolean;
+  /** Separator used only with mergeSystemMessages; defaults to two newlines. */
+  mergeSystemSeparator?: string;
 }
 
 /** Independent transport, protocol and model outcomes for an exchange. */

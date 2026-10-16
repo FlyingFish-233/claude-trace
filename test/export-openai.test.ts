@@ -1,3 +1,7 @@
+/**
+ * @file export-openai.test.ts
+ * @description Tests SFT reconstruction, system placement, history matching and provenance.
+ */
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -9,6 +13,7 @@ const user = (text: string) => ({ role: "user", content: text });
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }] });
 const answer = (text: string) => ({ role: "assistant", content: [{ type: "text", text }] });
 
+/** Build a successful Anthropic exchange with overridable request and response fields. */
 function pair(timestamp: number, messages: any[], response: any, extra: any = {}): any {
 	return {
 		request: {
@@ -20,6 +25,7 @@ function pair(timestamp: number, messages: any[], response: any, extra: any = {}
 	};
 }
 
+/** Create isolated trace directories and remove them after the assertion callback. */
 async function fixture(files: Record<string, any[]>, run: (root: string, output: string) => Promise<void>): Promise<void> {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "claude-trace-export-"));
 	try {
@@ -76,7 +82,7 @@ describe("OpenAI trace export", () => {
 		const first = pair(100, [user("task"), inlineSystem], answer("one"), { body: body("first") });
 		const second = pair(200, [user("task"), inlineSystem, assistant("one"), user("next")], answer("two"), { body: body("second") });
 		await fixture({ source: [first, second] }, async (root, output) => {
-			const diagnostics = await exportOpenAI([root], output);
+			const diagnostics = await exportOpenAI([root], output, undefined, { mergeSystemMessages: true });
 			const record = read(output)[0];
 			assert.equal(diagnostics.counts.continued, 1);
 			assert.deepEqual(record.messages.map((message: any) => message.role),
@@ -183,7 +189,7 @@ describe("OpenAI trace export", () => {
 		const first = pair(100, [user("task"), initial], answer("one"));
 		const second = pair(200, [user("task"), { role: "system", content: "Agent types" }, assistant("one"), user("next"), reminder], answer("two"));
 		await fixture({ source: [first, second] }, async (root, output) => {
-			const diagnostics = await exportOpenAI([root], output, undefined, { filterSystemMessages: true });
+			const diagnostics = await exportOpenAI([root], output, undefined, { filterSystemMessages: true, mergeSystemMessages: true });
 			const record = read(output)[0];
 			assert.equal(read(output).length, 1);
 			assert.equal(diagnostics.counts.continued, 1);
@@ -192,11 +198,91 @@ describe("OpenAI trace export", () => {
 			assert.equal(record.messages.at(-1).content, "two");
 		});
 		await fixture({ source: [first, second] }, async (root, output) => {
-			const diagnostics = await exportOpenAI([root], output);
+			const diagnostics = await exportOpenAI([root], output, undefined, { mergeSystemMessages: true });
 			assert.equal(read(output).length, 2);
 			assert.equal(diagnostics.counts.system_or_tools_changed, 1);
 		});
 	});
+
+	for (const filterSystemMessages of [false, true]) {
+		for (const mergeSystemMessages of [false, true]) {
+			it(`handles independent system filtering=${filterSystemMessages} and merging=${mergeSystemMessages}`, async () => {
+				const messages = [user("task"), { role: "system", content: "First" }, user("next"),
+					{ role: "system", content: [{ type: "text", text: "Second" }] }];
+				await fixture({ source: [pair(100, messages, answer("done"))] }, async (root, output) => {
+					await exportOpenAI([root], output, undefined, { filterSystemMessages, mergeSystemMessages });
+					const result = read(output)[0].messages;
+					const expected = mergeSystemMessages
+						? ["InstructionsFirst" + (filterSystemMessages ? "" : "Second"), "task", "next", "done"]
+						: ["Instructions", "task", "First", "next", ...(filterSystemMessages ? [] : ["Second"]), "done"];
+					assert.deepEqual(result.map((message: any) => message.content), expected);
+					assert(result.filter((message: any) => message.role === "system").every((message: any) => message.trainable === false));
+				});
+			});
+		}
+	}
+
+	it("preserves inline system boundaries by default, including without a top-level system", async () => {
+		const messages = [user("task"), { role: "system", content: "First" },
+			{ role: "system", content: [{ type: "text", text: "Second" }] }, user("next")];
+		await fixture({ source: [pair(100, messages, answer("done"), { body: { system: undefined } })] }, async (root, output) => {
+			await exportOpenAI([root], output);
+			assert.deepEqual(read(output)[0].messages.map((message: any) => [message.role, message.content]), [
+				["user", "task"], ["system", "First"], ["system", "Second"], ["user", "next"], ["assistant", "done"],
+			]);
+		});
+	});
+
+	it("extends default trajectories with new inline instructions without hoisting or duplication", async () => {
+		const initial = { role: "system", content: "Initial" };
+		const reminder = { role: "system", content: [{ type: "text", text: "Reminder" }] };
+		const firstHistory = [user("task"), initial];
+		const secondHistory = [...firstHistory, assistant("one"), user("next"), reminder];
+		const thirdHistory = [...secondHistory, assistant("two"), user("last")];
+		await fixture({ source: [pair(100, firstHistory, answer("one")), pair(200, secondHistory, answer("two")),
+			pair(300, thirdHistory, answer("three"))] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			const records = read(output);
+			assert.equal(records.length, 1);
+			assert.equal(diagnostics.counts.continued, 2);
+			assert.deepEqual(records[0].messages.map((message: any) => message.content),
+				["Instructions", "task", "Initial", "one", "next", "Reminder", "two", "last", "three"]);
+			assert.deepEqual(records[0].messages.filter((message: any) => message.trainable).map((message: any) => message.content),
+				["one", "two", "three"]);
+			assert.equal(records[0].metadata.response_sources.length, 3);
+		});
+	});
+
+	it("still segments default trajectories when the top-level system or existing inline history changes", async () => {
+		const history = [user("task"), { role: "system", content: "Initial" }];
+		const first = pair(100, history, answer("one"));
+		const changedTop = pair(200, [...history, assistant("one"), user("next")], answer("two"), { body: { system: "Changed" } });
+		const changedInline = pair(300, [user("task"), { role: "system", content: "Rewritten" }, assistant("one"), user("next")], answer("three"));
+		await fixture({ source: [first, changedTop, changedInline] }, async (root, output) => {
+			const diagnostics = await exportOpenAI([root], output);
+			assert.equal(read(output).length, 3);
+			assert.equal(diagnostics.counts.system_or_tools_changed, 1);
+			assert.equal(diagnostics.counts.divergent_history, 1);
+		});
+	});
+
+	for (const mergeSystemMessages of [false, true]) {
+		it(`removes string/block billing headers without breaking history (merge=${mergeSystemMessages})`, async () => {
+			const history = (tag: string) => [user("task"),
+				{ role: "system", content: `x-anthropic-billing-header: ${tag}` },
+				{ role: "system", content: [{ type: "text", text: `x-anthropic-billing-header: ${tag}` }, { type: "text", text: "Keep" }] }];
+			const top = { body: { system: "x-anthropic-billing-header: top" } };
+			await fixture({ source: [pair(100, history("a"), answer("one"), top),
+				pair(200, [...history("b"), assistant("one"), user("next")], answer("two"), top)] }, async (root, output) => {
+				const diagnostics = await exportOpenAI([root], output, undefined, { mergeSystemMessages });
+				assert.equal(read(output).length, 1);
+				assert.equal(diagnostics.counts.continued, 1);
+				assert(!fs.readFileSync(output, "utf8").includes("x-anthropic-billing-header"));
+				assert.deepEqual(read(output)[0].messages.map((message: any) => message.content),
+					mergeSystemMessages ? ["Keep", "task", "one", "next", "two"] : ["task", "Keep", "one", "next", "two"]);
+			});
+		});
+	}
 
 	it("starts a new segment for each explicit compaction context", async () => {
 		const records = [

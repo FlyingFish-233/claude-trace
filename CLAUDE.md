@@ -203,6 +203,14 @@ Shared across all three CLIs unless noted:
 - `--generate-html FILE [OUT]` — offline HTML from JSONL
 - `--index` — conversation summaries + searchable index
 
+Claude-only utilities: `--validate <complete|incomplete> --claude-path PATH`
+requires an absolute `CLAUDE_TRACE_LOG_DIR`; `--export-openai --input PATH
+--output FILE` supports repeatable inputs, optional `--diagnostics FILE`,
+`--filter-system-messages` and opt-in `--merge-system-messages`. Export defaults
+to preserving inline system positions. Both modes reject other utility modes
+and `--run-with`; neither starts a client. Standalone validation/export bins and
+offline launchers are removed; their implementation modules are internal handlers.
+
 Tool-specific: `--claude-path`, `--extract-token` (Claude V1 only); `--opencode-path`; `--codex-path`.
 
 Full descriptions: see `README.md`.

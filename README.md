@@ -110,6 +110,11 @@ Logs: `.claude-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}` in the current d
 | `--extract-token` | Extract OAuth token and exit |
 | `--generate-html FILE [OUT]` | Generate HTML report from JSONL |
 | `--index` | Generate conversation summaries and index |
+| `--validate MODE` | Validate `complete`/`incomplete` capture; requires `--claude-path` and absolute `CLAUDE_TRACE_LOG_DIR` |
+| `--export-openai` | Export using `--input PATH` (repeatable) and `--output FILE` |
+| `--diagnostics FILE` | With export: write per-request diagnostics |
+| `--filter-system-messages` | With export: keep only the first inline system message |
+| `--merge-system-messages` | With export: merge inline system messages into the leading system message; default off |
 
 ### Claude Code V2+ (native binary)
 
@@ -427,17 +432,30 @@ codex-trace --index
 
 Scans log files, summarizes meaningful conversations via Claude CLI, and generates a searchable `index.html`. **Note:** indexing uses additional API tokens.
 
+### Trace validation
+
+```bash
+export CLAUDE_TRACE_LOG_DIR=/absolute/path/to/trace-directory
+claude-trace --validate complete --claude-path /path/to/claude
+claude-trace --validate incomplete --claude-path /path/to/claude
+```
+
+Checks `trace.jsonl` for valid request/response structure, successful Messages API exchanges and header redaction; writes `metadata.json` and JSON metadata to stdout. Validation may remove secret material from the trace. `complete` declares normal capture completion: failed checks mark it incomplete and exit 1. `incomplete` declares interrupted capture: checks still run, status remains incomplete, and findings alone do not cause a nonzero exit. Invalid validation arguments or a missing/non-absolute log directory exit 2. This does not assess task correctness.
+
 ### OpenAI SFT export
 
 ```bash
-claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json] [--filter-system-messages]
+claude-trace --export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl
+# Optional: --diagnostics diagnostics.json --filter-system-messages --merge-system-messages
 ```
 
 Directory inputs are searched recursively for `trace.jsonl`. The command refuses to overwrite existing output and creates only the JSONL file by default. Use `--diagnostics FILE` to save request-level diagnostics; skipped and duplicate requests are also reported in the command output. Each JSONL row contains `messages`, `tools`, and `metadata`. Historical messages have `trainable: false`; each captured assistant response has `trainable: true` and a corresponding entry in `metadata.response_sources`.
 
-Inline system messages are merged into the leading system message, and Claude Code billing-header text blocks are omitted, matching vLLM's Anthropic-to-OpenAI conversion. To render the final request prompt, apply the chat template to `messages.slice(0, -1)` with `tools` and `add_generation_prompt=true`; the final assistant response remains in the SFT trajectory.
+By default, top-level request `system` becomes a leading system message, while inline system messages retain their relative positions and separate boundaries. Add `--merge-system-messages` to concatenate all system text into the leading message, restoring the previous behavior. `--filter-system-messages` independently keeps only the first inline system message before optional merging; it does not filter the top-level system. Billing-header text is omitted in both modes, and system messages have `trainable: false`. Without merging, later inline system messages can extend a continuous trajectory; merging retains segmentation on changed combined system text. To render the final request prompt, apply the chat template to `messages.slice(0, -1)` with `tools` and `add_generation_prompt=true`; the final assistant response remains in the SFT trajectory.
 
 Only successful `POST /v1/messages` exchanges become training targets. History changes, including compaction, create separate rows; output from a segment ending at a history break may contain tool calls without subsequent tool results. The exporter uses only HTTP traces, does not read Claude session files, and does not generate token-level loss masks.
+
+Validation and export do not start Claude and cannot be combined with other utility modes or `--run-with`. Export-specific options require `--export-openai`. In tracing mode, arguments after `--run-with` remain client arguments. Standalone `claude-trace-validate` and `claude-trace-export-openai` commands and offline launchers are removed without aliases; migrate callers before adopting a new package.
 
 ## Requirements
 

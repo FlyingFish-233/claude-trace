@@ -1,3 +1,8 @@
+/**
+ * @file openai.ts
+ * @description Reconstructs OpenAI SFT trajectories from successful Anthropic HTTP exchanges.
+ * Inline system messages retain their positions unless merging is explicitly enabled.
+ */
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -6,17 +11,20 @@ import type { RawPair, SSEEvent } from "../types";
 
 type JsonObject = Record<string, any>;
 
+/** Origin of an exchange in an input trace. */
 export interface SourceLocation {
 	file: string;
 	line: number;
 	request_time: string;
 }
 
+/** OpenAI-style message annotated with whether it came from an actual model response. */
 export interface ExportedMessage extends JsonObject {
 	role: string;
 	trainable: boolean;
 }
 
+/** A continuous model interaction history with its tools and source provenance. */
 export interface ExportedTrajectory {
 	messages: ExportedMessage[];
 	tools: JsonObject[];
@@ -31,6 +39,7 @@ export interface ExportedTrajectory {
 	};
 }
 
+/** Assignment or rejection reason for an individual input request. */
 export interface DiagnosticEntry {
 	source: SourceLocation;
 	status: "assigned" | "skipped" | "duplicate";
@@ -39,6 +48,7 @@ export interface DiagnosticEntry {
 	duplicate_of?: SourceLocation;
 }
 
+/** Export totals and per-request provenance, optionally persisted as a separate JSON file. */
 export interface ExportDiagnostics {
 	trace_files: string[];
 	counts: Record<string, number>;
@@ -60,6 +70,15 @@ interface Chain {
 	compactionMarkers: Set<string>;
 }
 
+/** Independent, opt-in transformations applied to system messages during export. */
+export interface ExportOpenAIOptions {
+	/** Keep only the first inline system message; the top-level system is unaffected. */
+	filterSystemMessages?: boolean;
+	/** Hoist inline system text into the leading system message; defaults to false. */
+	mergeSystemMessages?: boolean;
+}
+
+/** Ignore cache annotations and empty signatures when comparing JSON histories. */
 function stable(value: any): any {
 	if (Array.isArray(value)) return value.map(stable);
 	if (value && typeof value === "object") {
@@ -71,6 +90,7 @@ function stable(value: any): any {
 	return value;
 }
 
+/** Match equivalent string/text-block representations without conflating tool arguments. */
 function normalizeContent(content: any): any {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
@@ -109,6 +129,7 @@ function isMessagesRequest(pair: RawPair): boolean {
 	}
 }
 
+/** Recursively collect canonical trace.jsonl paths without following directory cycles twice. */
 function collectTraceFiles(inputPaths: string[]): string[] {
 	const files = new Set<string>();
 	const directories = new Set<string>();
@@ -129,6 +150,7 @@ function collectTraceFiles(inputPaths: string[]): string[] {
 	return [...files].sort();
 }
 
+/** Prefer recorded parsed SSE events, falling back to raw data lines. */
 function parsedEvents(pair: RawPair): JsonObject[] {
 	const response = pair.response;
 	if (!response) return [];
@@ -147,6 +169,7 @@ function parsedEvents(pair: RawPair): JsonObject[] {
 	return events;
 }
 
+/** Reconstruct a complete successful response, rejecting unusable exchanges. */
 function responseMessage(pair: RawPair): JsonObject {
 	const response = pair.response;
 	if (!response) throw new Error("missing_response");
@@ -201,6 +224,7 @@ function textContent(value: any): string {
 	return JSON.stringify(value);
 }
 
+/** Collect Anthropic system text while removing Claude Code billing headers. */
 function systemBlocks(value: any): string[] {
 	if (!Array.isArray(value)) return [];
 	return value.filter((block) => block?.type === "text" && typeof block.text === "string"
@@ -208,8 +232,31 @@ function systemBlocks(value: any): string[] {
 		.map((block) => block.text);
 }
 
-function effectiveSystem(body: JsonObject): string {
-	const parts: string[] = typeof body.system === "string" ? [body.system] : systemBlocks(body.system);
+/** Normalize system text independently of whether it will be hoisted. */
+function systemText(value: any): string {
+	return typeof value === "string"
+		? (value.startsWith("x-anthropic-billing-header") ? "" : value)
+		: systemBlocks(value).join("");
+}
+
+/** Remove billing-only inline messages/blocks before history matching and conversion. */
+function cleanSystemMessages(messages: any[]): any[] {
+	return messages.flatMap((message) => {
+		if (message.role !== "system") return [message];
+		if (typeof message.content === "string") {
+			return message.content.startsWith("x-anthropic-billing-header") ? [] : [message];
+		}
+		if (!Array.isArray(message.content)) return [message];
+		const content = message.content.filter((block: any) => !(block?.type === "text"
+			&& typeof block.text === "string" && block.text.startsWith("x-anthropic-billing-header")));
+		return message.content.length > 0 && content.length === 0 ? [] : [{ ...message, content }];
+	});
+}
+
+/** Only merged mode treats inline instructions as part of the leading-system identity. */
+function effectiveSystem(body: JsonObject, merge: boolean): string {
+	const parts = [systemText(body.system)];
+	if (!merge) return parts[0];
 	for (const message of body.messages) {
 		if (message.role !== "system") continue;
 		if (typeof message.content === "string") {
@@ -219,8 +266,9 @@ function effectiveSystem(body: JsonObject): string {
 	return parts.join("");
 }
 
+/** Convert Anthropic content and tool blocks into OpenAI message records. */
 function convertMessage(message: any, trainable: boolean): ExportedMessage[] {
-	if (message.role === "system") return [{ role: "system", content: textContent(message.content), trainable }];
+	if (message.role === "system") return [{ role: "system", content: textContent(message.content), trainable: false }];
 	if (message.role === "assistant") {
 		const blocks = typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content;
 		if (!Array.isArray(blocks)) throw new Error("invalid_assistant_content");
@@ -269,6 +317,7 @@ function convertTools(tools: any): JsonObject[] {
 	}));
 }
 
+/** Recognize explicit context compaction while excluding embedded task-notification summaries. */
 function compactionMarkers(body: JsonObject): string[] {
 	const contents = [body.system, ...body.messages.map((message: any) => message.content)];
 	return contents.map((content) => textContent(content)).filter((content) => {
@@ -319,9 +368,14 @@ function bump(counts: Record<string, number>, name: string, amount = 1): void {
 	counts[name] = (counts[name] || 0) + amount;
 }
 
+/**
+ * Export deduplicated successful exchanges into continuous SFT trajectories.
+ * @throws When inputs are unavailable or an output/diagnostics destination already exists.
+ * @returns Per-request diagnostics and aggregate counts.
+ */
 export async function exportOpenAI(
 	inputPaths: string[], outputPath: string, diagnosticsOutputPath?: string,
-	options: { filterSystemMessages?: boolean } = {},
+	options: ExportOpenAIOptions = {},
 ): Promise<ExportDiagnostics> {
 	if (!inputPaths.length) throw new Error("at least one --input is required");
 	const output = path.resolve(outputPath);
@@ -380,14 +434,14 @@ export async function exportOpenAI(
 		const rawBody = pair.request.body;
 		const filtered = options.filterSystemMessages && Array.isArray(rawBody?.messages)
 			? filterSystemMessages(rawBody.messages) : null;
-		const body = filtered ? { ...rawBody, messages: filtered.messages } : rawBody;
-		if (!body || !Array.isArray(body.messages)) {
+		if (!rawBody || !Array.isArray(rawBody.messages)) {
 			bump(diagnostics.counts, "invalid_request_messages");
 			diagnostics.requests.push({ source, status: "skipped", reason: "invalid_request_messages" });
 			continue;
 		}
+		const body = { ...rawBody, messages: cleanSystemMessages(filtered ? filtered.messages : rawBody.messages) };
 		if (filtered?.removed) bump(diagnostics.counts, "filtered_system_messages", filtered.removed);
-		const system = effectiveSystem(body);
+		const system = effectiveSystem(body, options.mergeSystemMessages === true);
 		const systemKey = key(system);
 		const toolsKey = key(body.tools || []);
 		const prefixCandidates = chains.filter((chain) => prefixMatches(chain.lastRequest, body.messages));
@@ -404,13 +458,14 @@ export async function exportOpenAI(
 				? "system_or_tools_changed" : chains.length ? "divergent_history" : "initial";
 		if (!chosen && prefixCandidates.length) bump(diagnostics.counts, "prefix_conflicts");
 		try {
+			const history = chosen ? body.messages.slice(chosen.lastRequest.length + 1) : body.messages;
+			const messages = history.filter((message: any) => !options.mergeSystemMessages || message.role !== "system")
+				.flatMap((message: any) => convertMessage(message, false));
 			const appended = chosen
-				? body.messages.slice(chosen.lastRequest.length + 1).filter((message: any) => message.role !== "system")
-					.flatMap((message: any) => convertMessage(message, false))
+				? messages
 				: [
 					...(system ? [{ role: "system", content: system, trainable: false }] : []),
-					...body.messages.filter((message: any) => message.role !== "system")
-						.flatMap((message: any) => convertMessage(message, false)),
+					...messages,
 				];
 			const answer = convertMessage(response, true);
 			const chain = chosen || {

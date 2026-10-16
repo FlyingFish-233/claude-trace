@@ -5,8 +5,6 @@
 	"main": "dist/index.js",
 	"bin": {
 		"claude-trace": "dist/cli/cli.js",
-		"claude-trace-validate": "dist/cli/validate-trace.js",
-		"claude-trace-export-openai": "dist/cli/export-openai.js",
 		"opencode-trace": "dist/cli/opencode-cli.js",
 		"codex-trace": "dist/cli/codex-cli.js",
 		"vibe-coding-proxy": "dist/cli/vibe-coding-proxy-cli.js"

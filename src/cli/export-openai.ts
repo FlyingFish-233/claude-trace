@@ -1,34 +1,37 @@
-#!/usr/bin/env node
+/**
+ * @file export-openai.ts
+ * @description Handles the claude-trace --export-openai utility without starting a client.
+ */
 
 import { exportOpenAI } from "../export/openai";
 
-async function main(args: string[]): Promise<void> {
+/** Parse export-only arguments and write trajectories; existing outputs are never overwritten. */
+export async function runExportOpenAI(args: string[]): Promise<void> {
 	const inputs: string[] = [];
 	let output: string | undefined;
 	let diagnostics: string | undefined;
 	let filterSystemMessages = false;
+	let mergeSystemMessages = false;
+	const seen = new Set<string>();
 	for (let index = 0; index < args.length; index++) {
-		if (args[index] === "--input" && args[index + 1]) inputs.push(args[++index]);
-		else if (args[index] === "--output" && args[index + 1] && !output) output = args[++index];
-		else if (args[index] === "--diagnostics" && args[index + 1] && !diagnostics) diagnostics = args[++index];
-		else if (args[index] === "--filter-system-messages") filterSystemMessages = true;
-		else if (args[index] === "--help" || args[index] === "-h") {
-			console.log("Usage: claude-trace-export-openai --input PATH [--input PATH ...] --output FILE [--diagnostics FILE] [--filter-system-messages]");
-			return;
-		} else throw new Error(`unknown or incomplete argument: ${args[index]}`);
+		const arg = args[index];
+		if (arg !== "--input" && seen.has(arg)) throw new Error(`duplicate argument: ${arg}`);
+		seen.add(arg);
+		if (["--input", "--output", "--diagnostics"].includes(arg)) {
+			const value = args[++index];
+			if (!value || value.startsWith("-")) throw new Error(`missing value for ${arg}`);
+			if (arg === "--input") inputs.push(value);
+			else if (arg === "--output") output = value;
+			else diagnostics = value;
+		} else if (arg === "--filter-system-messages") filterSystemMessages = true;
+		else if (arg === "--merge-system-messages") mergeSystemMessages = true;
+		else throw new Error(`unknown argument: ${arg}`);
 	}
 	if (!output || inputs.length === 0) throw new Error("--input and --output are required");
-	const result = await exportOpenAI(inputs, output, diagnostics, { filterSystemMessages });
+	const result = await exportOpenAI(inputs, output, diagnostics, { filterSystemMessages, mergeSystemMessages });
 	console.log(`Exported ${result.counts.trajectories} trajectories from ${result.counts.assigned || 0} requests`);
 	for (const entry of result.requests) {
 		if (entry.status !== "assigned") console.warn(`${entry.status}: ${entry.source.file}:${entry.source.line} (${entry.reason || "unknown"})`);
 	}
 	if (diagnostics) console.log(`Diagnostics: ${diagnostics}`);
-}
-
-if (require.main === module) {
-	main(process.argv.slice(2)).catch((error) => {
-		console.error((error as Error).message);
-		process.exitCode = 1;
-	});
 }

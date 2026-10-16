@@ -110,6 +110,11 @@ claude-trace --help
 | `--extract-token` | 提取 OAuth token 后退出 |
 | `--generate-html FILE [OUT]` | 从 JSONL 生成 HTML 报告 |
 | `--index` | 生成会话摘要与索引 |
+| `--validate MODE` | 校验 `complete`/`incomplete` 采集；需指定 `--claude-path` 和绝对路径 `CLAUDE_TRACE_LOG_DIR` |
+| `--export-openai` | 使用可重复的 `--input PATH` 和 `--output FILE` 导出轨迹 |
+| `--diagnostics FILE` | 导出时保存逐请求诊断 |
+| `--filter-system-messages` | 导出时只保留第一条内联 system 消息 |
+| `--merge-system-messages` | 导出时将内联 system 消息合并到顶部，默认关闭 |
 
 ### Claude Code V2+（原生二进制）
 
@@ -427,17 +432,30 @@ codex-trace --index
 
 扫描日志文件，通过 Claude CLI 为有意义会话生成摘要，并输出可搜索的 `index.html`。**注意：** 索引会产生额外 API token 消耗。
 
+### 校验轨迹
+
+```bash
+export CLAUDE_TRACE_LOG_DIR=/absolute/path/to/trace-directory
+claude-trace --validate complete --claude-path /path/to/claude
+claude-trace --validate incomplete --claude-path /path/to/claude
+```
+
+检查 `trace.jsonl` 的请求/响应结构、成功的 Messages API 交互和敏感头脱敏情况，生成 `metadata.json`，并将 JSON 元数据输出到标准输出；过程中可能清除轨迹中的密钥残留。`complete` 表示调用方声明采集正常结束：检查失败则标记 incomplete 并返回 1。`incomplete` 表示采集中断：仍执行检查，状态始终为 incomplete，但不会仅因检查发现问题而返回非零退出码。校验参数无效、日志目录未设置或不是绝对路径时返回 2。这不代表 Agent 是否正确完成任务。
+
 ### 导出 OpenAI SFT 轨迹
 
 ```bash
-claude-trace-export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl [--diagnostics diagnostics.json] [--filter-system-messages]
+claude-trace --export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl
+# 可选：--diagnostics diagnostics.json --filter-system-messages --merge-system-messages
 ```
 
 目录输入会递归查找 `trace.jsonl`。已有输出不会被覆盖；默认只生成 JSONL 文件。需要保存逐请求诊断时传入 `--diagnostics FILE`；跳过和去重的请求也会在命令输出中报告。每行包含 `messages`、`tools` 和 `metadata`。历史消息标记 `trainable: false`，实际响应标记 `trainable: true`，其来源记录在 `metadata.response_sources` 中。
 
-导出器会把内联 system 消息合并到开头的 system 消息，并过滤 Claude Code 的计费标头文本块，与 vLLM 的 Anthropic-to-OpenAI 转换保持一致。要渲染最后一次请求的 prompt，使用 `messages.slice(0, -1)`、`tools` 和 `add_generation_prompt=true`；最后一条 assistant 响应仍保留在 SFT 轨迹中。
+默认将请求顶层 `system` 转为开头的 system 消息，内联 system 消息保留原来的相对位置和独立边界。添加 `--merge-system-messages` 才将全部 system 文本拼接到顶部，恢复原来的合并行为。`--filter-system-messages` 独立控制过滤：先只保留第一条内联 system 消息，再按合并选项处理，不影响顶层 system。两种模式都会过滤计费标头文本，所有 system 消息均为 `trainable: false`。不合并时，后续新增的内联 system 可以正常延续轨迹；合并时保留原有的合并 system 文本变化分段行为。要渲染最后一次请求的 prompt，使用 `messages.slice(0, -1)`、`tools` 和 `add_generation_prompt=true`；最后一条 assistant 响应仍保留在 SFT 轨迹中。
 
 只有成功的 `POST /v1/messages` 请求会成为训练目标。压缩等历史变化会新建轨迹；若轨迹因历史断裂而结束，末尾工具调用可能没有后续工具结果。导出仅使用 HTTP trace，不读取 Claude session 文件，也不生成 token 级 loss mask。
+
+校验和导出不会启动 Claude，也不能与其他功能模式或 `--run-with` 组合使用。导出专用参数必须搭配 `--export-openai`；采集模式中 `--run-with` 后的参数仍原样传给客户端。原独立命令 `claude-trace-validate`、`claude-trace-export-openai` 及对应离线启动脚本已移除，不提供兼容别名；采用新版包前需迁移调用。
 
 ## 环境要求
 

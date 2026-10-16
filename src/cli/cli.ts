@@ -5,7 +5,7 @@
  * @description Entry point for the `claude-trace` command.
  *
  * Thin CLI wrapper that parses arguments, dispatches to utility modes
- * (token extraction, HTML generation, index building), or delegates interactive
+ * (validation, export, token extraction, HTML generation, index building), or delegates interactive
  * tracing to `trace-runner.ts` via the Claude Code tool profile.
  *
  * Architecture:
@@ -21,8 +21,9 @@
  * Registered as the `claude-trace` bin in package.json.
  */
 
-import { claudeProfile, extractClaudeToken } from "../tools/claude";
 import { runWithTracing } from "./trace-runner";
+import { runExportOpenAI } from "./export-openai";
+import { runValidateTrace } from "./validate-trace";
 import {
 	colors,
 	log,
@@ -50,6 +51,15 @@ ${colors.yellow}OPTIONS:${colors.reset}
   --extract-token    Extract OAuth token and exit (reproduces claude-token.py)
   --generate-html    Generate HTML report from JSONL file
   --index           Generate conversation summaries and index for .claude-trace/ directory
+  --validate MODE   Validate a trace: complete or incomplete; requires --claude-path
+                    and an absolute CLAUDE_TRACE_LOG_DIR; writes metadata.json
+  --export-openai   Export traces as OpenAI SFT JSONL (requires --input and --output)
+  --input PATH      Export input directory or trace.jsonl (repeatable)
+  --output FILE     Export destination; existing files are never overwritten
+  --diagnostics FILE Write optional per-request export diagnostics
+  --filter-system-messages Keep only the first inline system message before export
+  --merge-system-messages Merge inline system messages into the leading system message
+                    Export defaults to preserving inline system message positions
   --run-with         Pass all following arguments to Claude process
   --include-all-requests Include all requests made through fetch, otherwise only requests to v1/messages with more than 2 messages in the context
   --include-sensitive-headers Log sensitive headers (auth tokens, cookies) without redaction
@@ -76,6 +86,12 @@ ${colors.yellow}MODES:${colors.reset}
 
   ${colors.green}Indexing:${colors.reset}
     claude-trace --index                             Generate conversation summaries and index
+
+  ${colors.green}Validation and export (exclusive utility modes):${colors.reset}
+    claude-trace --validate complete --claude-path /path/to/claude
+    claude-trace --validate incomplete --claude-path /path/to/claude
+    claude-trace --export-openai --input /path/to/run --output sft.jsonl
+    claude-trace --export-openai --input /path/to/run --output sft.jsonl --merge-system-messages
 
 ${colors.yellow}EXAMPLES:${colors.reset}
   # Start Claude with logging
@@ -127,12 +143,9 @@ For more information, visit: https://github.com/FlyingFish-233/claude-trace
 /**
  * Main CLI dispatcher.
  *
- * Modes are mutually exclusive and checked in priority order:
- * 1. `--help` / `-h` — print usage and exit
- * 2. `--extract-token` — OAuth token extraction (Claude-only)
- * 3. `--generate-html` — offline HTML report from an existing JSONL log
- * 4. `--index` — rebuild conversation summaries in `.claude-trace/`
- * 5. Default — launch Claude with live traffic tracing via `runWithTracing`
+ * Help takes precedence. Validation and export reject conflicting utility modes
+ * and live tracing arguments, then return without starting a proxy or client.
+ * Other utility modes retain their existing dispatch behavior.
  *
  * Arguments after `--run-with` are passed verbatim to the Claude child process.
  * All other flags are consumed by `parseTraceArgs` before dispatch.
@@ -146,6 +159,27 @@ async function main(): Promise<void> {
 		showHelp();
 		process.exit(0);
 	}
+
+	const utilityModes = ["--validate", "--export-openai"];
+	const utilityMode = traceArgs.find((arg) => utilityModes.includes(arg));
+	if (utilityMode) {
+		const modes = new Set([...utilityModes, "--extract-token", "--generate-html", "--index"]);
+		if (traceArgs.filter((arg) => modes.has(arg)).length !== 1 || args.includes("--run-with")) {
+			console.error("Validation/export must be used alone, without other modes or --run-with");
+			process.exitCode = utilityMode === "--validate" ? 2 : 1;
+			return;
+		}
+		if (utilityMode === "--validate") process.exitCode = runValidateTrace(traceArgs);
+		else await runExportOpenAI(traceArgs.filter((arg) => arg !== "--export-openai"));
+		return;
+	}
+	const exportOptions = ["--input", "--output", "--diagnostics", "--filter-system-messages", "--merge-system-messages"];
+	if (traceArgs.some((arg) => exportOptions.includes(arg))) {
+		throw new Error("Export options require --export-openai");
+	}
+
+	// Loading the profile resolves capture settings; offline utilities must not depend on them.
+	const { claudeProfile, extractClaudeToken } = await import("../tools/claude");
 
 	// `--claude-path` takes the next positional arg as the binary location.
 	let customClaudePath: string | undefined;

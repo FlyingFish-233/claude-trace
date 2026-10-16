@@ -1,4 +1,8 @@
-#!/usr/bin/env node
+/**
+ * @file validate-trace.ts
+ * @description Validates WorkflowExp traces and serves claude-trace --validate.
+ * Validation may redact trace contents and always writes metadata.json.
+ */
 
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -7,8 +11,10 @@ import { spawnSync } from "child_process";
 import { SENSITIVE_HEADER_PARTS } from "../intercept/header-redaction";
 import type { RawPair } from "../types";
 
+/** Caller-declared capture outcome; incomplete captures never become complete. */
 export type ValidationMode = "complete" | "incomplete";
 
+/** Persisted integrity, response and provenance information for one trace directory. */
 export interface TraceMetadata {
 	schema_version: 1;
 	status: ValidationMode;
@@ -29,6 +35,7 @@ export interface TraceMetadata {
 	validation_errors: string[];
 }
 
+/** Inputs for validation; the trace directory must be absolute. */
 export interface ValidateTraceOptions {
 	mode: ValidationMode;
 	claudePath: string;
@@ -36,12 +43,14 @@ export interface ValidateTraceOptions {
 	environment?: NodeJS.ProcessEnv;
 }
 
+/** Reproduce upstream partial redaction so residual secret fragments can be removed. */
 function upstreamRedaction(value: string): string {
 	if (value.length > 14) return `${value.substring(0, 10)}...${value.slice(-4)}`;
 	if (value.length > 4) return `${value.substring(0, 2)}...${value.slice(-2)}`;
 	return "[REDACTED]";
 }
 
+/** Accept epoch seconds, epoch milliseconds or parseable date strings. */
 function timestampMillis(value: unknown): number | null {
 	if (typeof value === "number" && Number.isFinite(value)) {
 		return value < 1_000_000_000_000 ? value * 1000 : value;
@@ -63,6 +72,7 @@ function isMessageExchange(record: RawPair): boolean {
 	}
 }
 
+/** Error responses are diagnosed separately; successful responses must contain data. */
 function hasMeaningfulSuccessfulResponse(record: RawPair): boolean {
 	const response = record.response;
 	if (!response) return false;
@@ -219,21 +229,34 @@ export function validateTrace(options: ValidateTraceOptions): TraceMetadata {
 	return metadata;
 }
 
-function main(): void {
-	const mode = process.argv[2] as ValidationMode | undefined;
-	const claudePath = process.argv[3];
-	if (!mode || !new Set(["complete", "incomplete"]).has(mode) || !claudePath) {
-		console.error("Usage: claude-trace-validate <complete|incomplete> CLAUDE_PATH");
-		process.exit(2);
+/** Run validation and return the existing exit status: usage 2, failed complete 1, otherwise 0. */
+export function runValidateTrace(args: string[]): number {
+	let mode: ValidationMode | undefined;
+	let claudePath: string | undefined;
+	for (let index = 0; index < args.length; index++) {
+		const arg = args[index];
+		const value = args[index + 1];
+		if (arg === "--validate" && !mode && (value === "complete" || value === "incomplete")) {
+			mode = value;
+			index++;
+		} else if (arg === "--claude-path" && !claudePath && value && !value.startsWith("-")) {
+			claudePath = value;
+			index++;
+		} else {
+			console.error(`Unknown, duplicate or incomplete validation argument: ${arg}`);
+			return 2;
+		}
+	}
+	if (!mode || !claudePath) {
+		console.error("Usage: claude-trace --validate <complete|incomplete> --claude-path CLAUDE_PATH");
+		return 2;
 	}
 	const traceDirectory = process.env.CLAUDE_TRACE_LOG_DIR;
-	if (!traceDirectory) {
+	if (!traceDirectory || !path.isAbsolute(traceDirectory)) {
 		console.error("CLAUDE_TRACE_LOG_DIR must be set to an absolute path");
-		process.exit(2);
+		return 2;
 	}
 	const metadata = validateTrace({ mode, claudePath, traceDirectory });
 	console.log(JSON.stringify(metadata));
-	if (mode === "complete" && metadata.validation_errors.length > 0) process.exit(1);
+	return mode === "complete" && metadata.validation_errors.length > 0 ? 1 : 0;
 }
-
-if (require.main === module) main();

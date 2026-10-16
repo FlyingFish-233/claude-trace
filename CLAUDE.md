@@ -217,6 +217,18 @@ offline launchers are removed; their implementation modules are internal handler
 
 Tool-specific: `--claude-path`, `--extract-token` (Claude V1 only); `--opencode-path`; `--codex-path`.
 
+Codex also supports `--export-openai` with the same input/output/diagnostic and
+system flags through the shared CLI handler, backed by `src/export/responses.ts`
+and `responses-conversion.ts`. Codex merge explicitly converts developer to system
+and joins systems with two newlines; its filter keeps the first system including
+top-level instructions. Combined order: convert, filter, merge. Both default off.
+Named JSONLs and directories are accepted; output
+is never overwritten. Conversion targets vLLM's non-Harmony text path, not the
+viewer adapter. Reject unavailable state, unsupported content, and incomplete
+responses with diagnostics. Multiple assistant messages per response are indexed
+by `metadata.response_message_ranges`; consumers must not assume one per round.
+Verify with `test/export-codex.test.ts` plus the complete typecheck/test/build.
+
 Full descriptions: see `README.md`.
 
 ## When Modifying Interception

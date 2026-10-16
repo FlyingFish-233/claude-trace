@@ -255,7 +255,69 @@ OPENCODE_TRACE_DEBUG=1 opencode-trace
 
 ---
 
+## 重放已采集请求
+
+两个 CLI 都可将一条 trace 请求发送到指定模型服务，不启动编码客户端：
+
+```bash
+claude-trace --replay trace.jsonl --line-number 12 --base-url http://127.0.0.1:30011 --output claude-replay.json
+codex-trace --replay session.jsonl --line-number 34 --base-url http://127.0.0.1:30011 --model target-model --max-tokens 128
+claude-trace --replay trace.jsonl --trace-line 12 --trace-line 15 --concurrency 2 --output claude-replays.json
+codex-trace --replay session.jsonl --line-number 1 --line-number 3 --concurrency 2 --output codex-replays.json
+```
+
+`--line-number`（别名 `--trace-line`）按 JSONL 文件从 1 开始的物理行号选择，可重复传入。`--concurrency N` 限制同时发送的请求数，默认 1。发送前会验证所有指定行，重复行号会报错；多行结果按参数顺序保存，不受完成顺序影响。单行保留原记录格式；多行写入一个 JSON 文件，包含 `selected_line_numbers`、`concurrency_limit`、`counts` 和按顺序排列的 `results` 记录数组。任一请求失败时命令返回非零，但保留所有响应。省略行号时随机选一条可重放的 POST 请求，`--seed N` 可固定选择结果，不能与显式行号同时使用。目标地址使用 `--base-url` 加 `/v1/messages` 或 `/v1/responses`；Codex 的 `/backend-api/codex/responses` 也会映射到 `/v1/responses`，原请求的查询参数会保留。`--model` 和 `--max-tokens` 覆盖请求体；token 字段在 Messages 中为 `max_tokens`，在 Responses 中为 `max_output_tokens`。默认设置 `stream=false`；`--preserve-stream` 保持流式并将 SSE 保存为文本。`--timeout SEC` 默认 1800 秒。
+
+原始认证信息、Cookie、压缩和传输相关请求头不会转发。用 `--api-key-env VAR` 从环境变量读取目标服务密钥，同时发送 `x-api-key` 和 Bearer 认证；记录中会脱敏。JSON 记录包含原始请求、实际发送的请求、响应正文及状态和耗时。`--output FILE` 不覆盖已有文件；省略时写入 trace 旁的 `replays/` 目录。HTTP 或网络失败也会保存记录并返回退出码 1。重放不能与其他功能模式或 `--run-with` 同时使用。
+
 ## Codex CLI（`codex-trace`）
+
+### 导出 Responses 轨迹用于训练和聊天模板
+
+```bash
+codex-trace --export-openai --input .codex-trace --output sft.jsonl --diagnostics diagnostics.json
+codex-trace --export-openai --input session.jsonl --output merged.jsonl --convert-developer-to-system --merge-system-messages
+```
+
+这是不启动 Codex 的离线模式。`--input` 支持任意文件名的 `.jsonl`、递归目录以及重复输入；
+拒绝覆盖已有输出或诊断文件。`--convert-developer-to-system` 在原位置把 developer
+转为 system，并移除其 `tools` 字段。`--filter-system-messages` 随后只保留第一条
+system，丢弃后续 system；存在顶层 `instructions` 时，它算第一条。
+`--merge-system-messages` 则将所有 system 移到顶部，以 `\n\n` 连接。
+filter 和 merge 都要求先开启 developer 转换。三个选项默认关闭；同时开启时，顺序为
+转换、过滤、合并。导出与其他功能模式、实时采集选项互斥；
+`--run-with` 后的参数仍透传给客户端。
+
+转换参考当前安装的 vLLM `0.30.1rc1.dev619+g5f30fc703` 的 **非 Harmony、纯文本** 路径：
+`renderers/online_renderer.py::render_responses`、
+`entrypoints/openai/responses/utils.py::construct_input_messages`、`construct_tool_dicts`，
+以及后续的字符串聊天内容预处理。保留 system/developer/user 消息位置，文本块以换行连接，
+合并相邻 assistant 的思考、文本和函数调用，将工具参数 JSON 解析为对象，将命名空间工具名
+展开为 `namespace__name`，同时提供 `reasoning` 和 `reasoning_content` 以兼容模板。
+
+每行输出包含 `messages`、`tools` 和来源 `metadata`，与 Claude 导出结构一致。
+只有真实、完整的模型输出标记 `trainable: true`；请求历史、system 和工具结果为 false。
+兼容的完整历史拼接成轨迹，历史变化或衔接有歧义时分段，重复采集去重。支持 JSON 和完整 SSE
+响应，以及 API Key/ChatGPT 的 `/responses` 路由。`metadata.rounds` 记录来源文件和行号；
+`metadata.response_message_ranges` 记录每轮响应消息的左闭右开索引范围，因为一轮 Responses
+可能包含多条 assistant 消息，不能假设每轮只有一条 assistant。
+
+导出器不请求服务端历史。`previous_response_id`、服务端会话、加密思考、多模态或内置/自定义
+工具、不完整响应，以及会被 vLLM 截断的内容，会明确诊断并跳过；不替代 Harmony 渲染器。
+`tool_choice=none` 沿用 vLLM 默认的保留函数工具定义行为。模板参数保留在每轮 parameters
+中，但 JSONL 导出器不执行模板渲染。
+
+程序接口为 `exportCodexOpenAI(inputs, output, diagnostics?, options?)` 和
+`convertResponsesRequest(body, options?)`，三个 system 选项都默认关闭。后者返回单个完整
+请求的模板用 `messages/tools`，前者附加轨迹和训练来源。独立比对提示词时，取对应响应范围
+`start` 之前的消息前缀，使用目标 tokenizer/template 和相同的模板参数渲染。
+
+当前 Qwen 模板可同时开启 `--convert-developer-to-system` 和 `--merge-system-messages`，在导出时完成 vLLM HF 渲染器中的
+developer 转换与 system 合并，然后直接使用该模板渲染。其他模板可只转换 developer 或保持默认；
+导出器不会自动判断目标模板。仅开启 developer 转换会保留消息位置；过滤会丢弃后续指令，
+忠实复现完整提示词时无需开启过滤。
+Codex 的程序选项类型为 `ExportCodexOpenAIOptions`；Claude 导出继续使用原有的内联
+system 过滤和直接拼接语义。
 
 **主要认证方式：ChatGPT OAuth。** 若你通过 ChatGPT 账号登录 Codex（多数安装的默认方式），`codex-trace` 可完整追踪该路径 —— 多轮对话、zstd 压缩请求与 SSE 流式响应均能在 HTML 报告中正确展示。
 

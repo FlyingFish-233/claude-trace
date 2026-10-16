@@ -255,7 +255,84 @@ Use this when a model is not routed correctly, requests are missing from the log
 
 ---
 
+## Replay captured requests
+
+Both CLIs can send one captured request to a model server without launching the coding client:
+
+```bash
+claude-trace --replay trace.jsonl --line-number 12 --base-url http://127.0.0.1:30011 --output claude-replay.json
+codex-trace --replay session.jsonl --line-number 34 --base-url http://127.0.0.1:30011 --model target-model --max-tokens 128
+claude-trace --replay trace.jsonl --trace-line 12 --trace-line 15 --concurrency 2 --output claude-replays.json
+codex-trace --replay session.jsonl --line-number 1 --line-number 3 --concurrency 2 --output codex-replays.json
+```
+
+`--line-number` (alias `--trace-line`) selects a physical, 1-based JSONL line and may be repeated. `--concurrency N` caps simultaneous requests, defaulting to 1. Every selected line is validated before any request is sent; duplicates are rejected. Multi-line results stay in argument order regardless of completion order. A single selected line retains the original record format; multiple lines produce one JSON file with `selected_line_numbers`, `concurrency_limit`, `counts`, and an ordered `results` array of the same per-line records. The command exits nonzero if any replay fails, while keeping all responses. Omit line options to sample one replayable POST request; `--seed N` makes that choice repeatable and cannot be combined with explicit lines. The target URL uses the destination base URL and `/v1/messages` or `/v1/responses`, including Codex traces captured at `/backend-api/codex/responses`. Query parameters from the captured URL are retained. `--model` and `--max-tokens` override the request body; the token field is `max_tokens` for Messages and `max_output_tokens` for Responses. By default replay sets `stream=false`; use `--preserve-stream` to retain streaming and save SSE as text. `--timeout SEC` defaults to 1800.
+
+Captured authentication, cookies, compression, host and transport headers are not forwarded. Use `--api-key-env VAR` to supply a destination key; it is sent as `x-api-key` and Bearer authorization and redacted from the saved record. The JSON record contains the original request, sent request, response body/status and timing. `--output FILE` refuses to overwrite an existing file; without it, records go beside the trace in `replays/`. HTTP and network failures are saved and return exit code 1. Replay is exclusive with other utility modes and `--run-with`.
+
 ## Codex CLI (`codex-trace`)
+
+### Export Responses traces for training and chat templates
+
+```bash
+codex-trace --export-openai --input .codex-trace --output sft.jsonl --diagnostics diagnostics.json
+codex-trace --export-openai --input session.jsonl --output merged.jsonl --convert-developer-to-system --merge-system-messages
+```
+
+This offline mode never starts Codex. `--input` accepts any named `.jsonl` file
+or a directory recursively and may be repeated. Existing output/diagnostics
+files are refused. `--convert-developer-to-system` changes each developer role to
+system in place and removes its developer-specific `tools` field.
+`--filter-system-messages` then keeps the first system and drops all later ones;
+top-level `instructions`, when present, count as the first.
+`--merge-system-messages` instead moves all systems to the beginning and joins
+their content with `\n\n`. Filter and merge both require developer conversion.
+All three flags default off; when combined, the order is convert, filter, merge.
+Export conflicts with
+other utility modes and live-tracing options; arguments after `--run-with`
+remain client arguments.
+
+Conversion follows the **non-Harmony, text** path in the installed vLLM
+`0.30.1rc1.dev619+g5f30fc703`: `renderers/online_renderer.py::render_responses`,
+`entrypoints/openai/responses/utils.py::construct_input_messages` and
+`construct_tool_dicts`, followed by string-content chat preprocessing.
+It preserves system/developer/user positions, joins text blocks with newlines,
+combines adjacent reasoning/text/function-call items, parses tool argument JSON
+into objects, and flattens namespace functions as `namespace__name`.
+Both `reasoning` and `reasoning_content` are supplied for template compatibility.
+
+Each output line has `messages`, `tools`, and source `metadata`, like the Claude
+exporter. Only observed complete model outputs have `trainable: true`; history,
+system messages, and tool results are false. Compatible full histories form a
+trajectory; changed or ambiguous histories start a new segment. Duplicate
+captures are ignored. JSON and completed SSE responses are supported on both
+API-key and ChatGPT `/responses` routes. `metadata.rounds` identifies source
+file/line; `metadata.response_message_ranges` gives half-open message indexes
+for each round, since a Responses output may contain several assistant messages.
+Use these ranges instead of assuming one assistant message per round.
+
+The exporter does not fetch server-side state. `previous_response_id`, stored
+conversations, encrypted reasoning, multimodal/builtin/custom tools, partial
+responses, and content that would be truncated by vLLM are skipped with explicit
+diagnostics. It does not replace the Harmony renderer. `tool_choice=none` uses
+vLLM's default behavior of retaining function tool definitions. Template kwargs
+are kept in round parameters, not applied by this JSONL exporter.
+
+Programmatic exports: `exportCodexOpenAI(inputs, output, diagnostics?, options?)`
+and `convertResponsesRequest(body, options?)`. All three system options default off.
+The latter returns template-ready `messages/tools` for one self-contained
+request; the former adds trajectory and training provenance. For independent
+prompt comparisons, render each round's prefix ending at its response range's
+`start`, with the destination tokenizer/template and matching template kwargs.
+
+For the current Qwen template, use `--convert-developer-to-system` with
+`--merge-system-messages` to export the developer conversion and system consolidation normally done by vLLM's HF
+renderer. The resulting messages can be rendered directly with this template.
+Leave the transformations off for templates that accept the original roles and positions; the
+exporter does not detect the destination template. Filtering is optional and
+discards instructions, so leave it off when reproducing the complete prompt.
+These Codex options have their own `ExportCodexOpenAIOptions` programmatic type;
+Claude export retains its existing inline-only filter and concatenation semantics.
 
 **Primary auth mode: ChatGPT OAuth.** If you use Codex signed in with your ChatGPT account (the default for most installs), `codex-trace` fully supports tracing that path — multi-turn conversations, zstd-compressed requests, and SSE streaming responses appear correctly in HTML reports.
 

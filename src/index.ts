@@ -2,9 +2,8 @@
  * @file index.ts
  * @description Public package entry point for programmatic use of claude-trace.
  *
- * Re-exports the traffic logger (V1 interceptor), HTML generator, and shared
- * types so consumers can embed logging or report generation without invoking
- * the CLI binaries directly.
+ * Re-exports the traffic logger (V1 interceptor), HTML generator, offline SFT
+ * exporters, Responses conversion and shared types for programmatic consumers.
  */
 
 // Main exports for the package
@@ -16,3 +15,11 @@ export { RawPair, ClaudeData, HTMLGenerationData, TemplateReplacements } from ".
 export * from "./intercept/interceptor";
 export * from "./report/html-generator";
 export * from "./types";
+
+// Offline conversion/export functions never launch a coding client.
+export { exportOpenAI } from "./export/openai";
+export type { ExportOpenAIOptions, ExportDiagnostics, ExportedTrajectory } from "./export/openai";
+export { exportCodexOpenAI } from "./export/responses";
+export type { ResponsesTrajectory } from "./export/responses";
+export { convertResponsesRequest } from "./export/responses-conversion";
+export type { ConvertedResponsesRequest, ExportCodexOpenAIOptions } from "./export/responses-conversion";

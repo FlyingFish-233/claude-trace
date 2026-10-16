@@ -5,7 +5,7 @@
  * @description Entry point for the `codex-trace` command.
  *
  * Thin CLI wrapper that parses arguments, dispatches to utility modes
- * (HTML generation, index building), or delegates interactive tracing to
+ * (OpenAI export, HTML generation, index building), or delegates interactive tracing to
  * `trace-runner.ts` via the Codex CLI tool profile.
  *
  * Architecture:
@@ -22,7 +22,9 @@
  * Registered as the `codex-trace` bin in package.json.
  */
 
-import { codexProfile } from "../tools/codex";
+import { exportCodexOpenAI } from "../export/responses";
+import { runExportOpenAI } from "./export-openai";
+import { runReplay } from "./replay";
 import { runWithTracing } from "./trace-runner";
 import {
 	colors,
@@ -48,6 +50,25 @@ ${colors.yellow}USAGE:${colors.reset}
   codex-trace [OPTIONS] [--run-with CODEX_ARG...]
 
 ${colors.yellow}OPTIONS:${colors.reset}
+  --export-openai   Export Responses traces as OpenAI SFT JSONL; never starts Codex
+  --replay FILE     Replay Responses requests from a trace JSONL file; never starts Codex
+  --line-number N   Replay a 1-based JSONL line; repeat to select multiple lines
+  --trace-line N    Alias for --line-number (also repeatable)
+  --concurrency N  Maximum simultaneous replay requests (default: 1)
+  --base-url URL    Destination API base URL (default: http://127.0.0.1:30011)
+  --model NAME      Override the captured model for replay
+  --max-tokens N    Override max_output_tokens for replay
+  --timeout SEC     Replay HTTP timeout (default: 1800)
+  --seed N          Reproducible random request selection
+  --api-key-env VAR Read destination API key from an environment variable
+  --preserve-stream Keep streaming enabled; save SSE as text (default: stream=false)
+  --input PATH      Export input JSONL file or directory (repeatable)
+  --output FILE     Export destination; existing files are never overwritten
+  --diagnostics FILE Write per-request export diagnostics
+  --convert-developer-to-system Convert developer messages to system in place
+  --filter-system-messages After conversion, keep the first system and drop later systems
+  --merge-system-messages After conversion, merge all systems at the beginning
+                    Filter and merge require developer conversion; all default off
   --generate-html    Generate HTML report from JSONL file
   --index           Generate conversation summaries and index for .codex-trace/ directory
   --run-with         Pass all following arguments to Codex process
@@ -72,6 +93,14 @@ ${colors.yellow}MODES:${colors.reset}
     codex-trace --index                             Generate conversation summaries and index
 
 ${colors.yellow}EXAMPLES:${colors.reset}
+  # Export successful Responses rounds for training or template rendering
+  codex-trace --export-openai --input .codex-trace --output sft.jsonl
+  codex-trace --export-openai --input session.jsonl --output sft.jsonl --convert-developer-to-system --merge-system-messages
+
+  # Replay a captured request against a model server
+  codex-trace --replay session.jsonl --line-number 12 --base-url http://127.0.0.1:30011
+  codex-trace --replay session.jsonl --trace-line 12 --trace-line 15 --concurrency 2 --output replays.json
+
   # Start Codex TUI with logging
   codex-trace
 
@@ -104,7 +133,8 @@ For more information, visit: https://github.com/FlyingFish-233/claude-trace
 /**
  * Main CLI dispatcher.
  *
- * Modes are mutually exclusive and checked in priority order:
+ * Export rejects conflicting modes and live-tracing arguments before loading a tool profile.
+ * Other modes are checked in priority order:
  * 1. `--help` / `-h` — print usage and exit
  * 2. `--generate-html` — offline HTML report from an existing JSONL log
  * 3. `--index` — rebuild conversation summaries in `.codex-trace/`
@@ -121,6 +151,19 @@ async function main(): Promise<void> {
 		showHelp();
 		process.exit(0);
 	}
+	if (traceArgs.includes("--export-openai") || traceArgs.includes("--replay")) {
+		const modes = new Set(["--export-openai", "--replay", "--validate", "--extract-token", "--generate-html", "--index"]);
+		if (traceArgs.filter((arg) => modes.has(arg)).length !== 1 || args.includes("--run-with")) {
+			throw new Error("Export/replay must be used alone, without other modes or --run-with");
+		}
+		if (traceArgs.includes("--replay")) process.exitCode = await runReplay(traceArgs);
+		else await runExportOpenAI(traceArgs.filter((arg) => arg !== "--export-openai"), exportCodexOpenAI, true);
+		return;
+	}
+	const offlineOptions = ["--input", "--output", "--diagnostics", "--convert-developer-to-system", "--filter-system-messages", "--merge-system-messages",
+		"--line-number", "--trace-line", "--concurrency", "--base-url", "--model", "--max-tokens", "--timeout", "--seed", "--api-key-env", "--preserve-stream"];
+	if (traceArgs.some((arg) => offlineOptions.includes(arg))) throw new Error("Offline utility options require --export-openai or --replay");
+	const { codexProfile } = require("../tools/codex") as typeof import("../tools/codex");
 
 	// `--codex-path` takes the next positional arg as the binary location.
 	let customCodexPath: string | undefined;

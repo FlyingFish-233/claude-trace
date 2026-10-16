@@ -24,6 +24,7 @@
 import { runWithTracing } from "./trace-runner";
 import { runExportOpenAI } from "./export-openai";
 import { runValidateTrace } from "./validate-trace";
+import { runReplay } from "./replay";
 import {
 	colors,
 	log,
@@ -54,6 +55,17 @@ ${colors.yellow}OPTIONS:${colors.reset}
   --validate MODE   Validate a trace: complete or incomplete; requires --claude-path
                     and an absolute CLAUDE_TRACE_LOG_DIR; writes metadata.json
   --export-openai   Export traces as OpenAI SFT JSONL (requires --input and --output)
+  --replay FILE     Replay Messages requests from a trace JSONL file; never starts Claude
+  --line-number N   Replay a 1-based JSONL line; repeat to select multiple lines
+  --trace-line N    Alias for --line-number (also repeatable)
+  --concurrency N  Maximum simultaneous replay requests (default: 1)
+  --base-url URL    Destination API base URL (default: http://127.0.0.1:30011)
+  --model NAME      Override the captured model for replay
+  --max-tokens N    Override max_tokens for replay
+  --timeout SEC     Replay HTTP timeout (default: 1800)
+  --seed N          Reproducible random request selection
+  --api-key-env VAR Read destination API key from an environment variable
+  --preserve-stream Keep streaming enabled; save SSE as text (default: stream=false)
   --input PATH      Export input directory or trace.jsonl (repeatable)
   --output FILE     Export destination; existing files are never overwritten
   --diagnostics FILE Write optional per-request export diagnostics
@@ -92,6 +104,11 @@ ${colors.yellow}MODES:${colors.reset}
     claude-trace --validate incomplete --claude-path /path/to/claude
     claude-trace --export-openai --input /path/to/run --output sft.jsonl
     claude-trace --export-openai --input /path/to/run --output sft.jsonl --merge-system-messages
+
+  ${colors.green}Request replay:${colors.reset}
+    claude-trace --replay trace.jsonl --line-number 12 --base-url http://127.0.0.1:30011
+    claude-trace --replay trace.jsonl --trace-line 12 --trace-line 15 --concurrency 2 --output replays.json
+    claude-trace --replay trace.jsonl --model target-model --output replay.json
 
 ${colors.yellow}EXAMPLES:${colors.reset}
   # Start Claude with logging
@@ -160,22 +177,24 @@ async function main(): Promise<void> {
 		process.exit(0);
 	}
 
-	const utilityModes = ["--validate", "--export-openai"];
+	const utilityModes = ["--validate", "--export-openai", "--replay"];
 	const utilityMode = traceArgs.find((arg) => utilityModes.includes(arg));
 	if (utilityMode) {
 		const modes = new Set([...utilityModes, "--extract-token", "--generate-html", "--index"]);
 		if (traceArgs.filter((arg) => modes.has(arg)).length !== 1 || args.includes("--run-with")) {
-			console.error("Validation/export must be used alone, without other modes or --run-with");
+			console.error("Validation/export/replay must be used alone, without other modes or --run-with");
 			process.exitCode = utilityMode === "--validate" ? 2 : 1;
 			return;
 		}
 		if (utilityMode === "--validate") process.exitCode = runValidateTrace(traceArgs);
-		else await runExportOpenAI(traceArgs.filter((arg) => arg !== "--export-openai"));
+		else if (utilityMode === "--export-openai") await runExportOpenAI(traceArgs.filter((arg) => arg !== "--export-openai"));
+		else process.exitCode = await runReplay(traceArgs);
 		return;
 	}
-	const exportOptions = ["--input", "--output", "--diagnostics", "--filter-system-messages", "--merge-system-messages"];
-	if (traceArgs.some((arg) => exportOptions.includes(arg))) {
-		throw new Error("Export options require --export-openai");
+	const offlineOptions = ["--input", "--output", "--diagnostics", "--filter-system-messages", "--merge-system-messages",
+		"--line-number", "--trace-line", "--concurrency", "--base-url", "--model", "--max-tokens", "--timeout", "--seed", "--api-key-env", "--preserve-stream"];
+	if (traceArgs.some((arg) => offlineOptions.includes(arg))) {
+		throw new Error("Offline utility options require --export-openai or --replay");
 	}
 
 	// Loading the profile resolves capture settings; offline utilities must not depend on them.

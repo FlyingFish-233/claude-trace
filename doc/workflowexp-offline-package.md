@@ -72,6 +72,26 @@ claude-trace --export-openai --input /logs/agent/claude-trace --output /logs/sft
 Inline system messages stay in their original positions by default. Add
 `--merge-system-messages` to hoist them into the leading system message.
 
+The existing npm `codex-trace` entry also provides Responses export:
+
+```bash
+codex-trace --export-openai --input /logs/agent/.codex-trace --output /logs/codex-sft.jsonl
+```
+
+It accepts named JSONL files and repeatable inputs, diagnostics, and opt-in
+system flags. For Codex, `--convert-developer-to-system` converts developer
+messages in place. `--merge-system-messages` then joins all systems at the top
+with two newlines; `--filter-system-messages` keeps only the first system,
+including top-level instructions. Filter and merge require conversion.
+Combined order is convert, filter, merge.
+There is no additional npm bin or runtime dependency.
+The minimal `offline/bin` templates in this repository only include the Claude
+launcher: a Codex-capable bundle must expose the existing npm entry or invoke
+its Node runtime with `dist/cli/codex-cli.js`. Rebuild the package before using
+this capability; installed bundles do not acquire it automatically. Consumers of Codex exports must use
+`metadata.response_message_ranges` to locate per-round assistant output, which
+can span multiple messages. See the README for supported Responses inputs.
+
 The standalone validation/export commands and offline launchers have been
 removed, without compatibility aliases. Downstream WorkflowExp callers, tests
 and bundle-builder checks must migrate to `bin/claude-trace --validate ...` and

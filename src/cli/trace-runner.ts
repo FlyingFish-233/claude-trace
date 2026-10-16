@@ -83,7 +83,7 @@ async function runNativeWithProxy(
 		logBaseName: options.logBaseName,
 		includeAllRequests: options.includeAllRequests,
 		openBrowser: options.openInBrowser,
-		jsonlOnly: profile.name === "claude" && options.jsonlOnly,
+		jsonlOnly: (profile.name === "claude" || profile.name === "codex") && options.jsonlOnly,
 		logSensitiveHeaders: options.logSensitiveHeaders,
 		targetBaseUrl: upstreamBaseUrl,
 		routes,

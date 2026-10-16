@@ -42,7 +42,7 @@ codex-trace
 vibe-coding-proxy --target-url https://api.deepseek.com/anthropic
 ```
 
-会话结束后会自动在浏览器中打开最新 HTML 报告。Claude Code 记录时使用 `--no-open` 可只保留 JSONL；在 `--generate-html` 模式下则表示不自动打开浏览器。
+会话结束后会自动在浏览器中打开最新 HTML 报告。Claude Code 和 Codex 记录时使用 `--no-open` 可只保留 JSONL；在 `--generate-html` 模式下则表示不自动打开浏览器。
 
 ## 安装
 
@@ -277,7 +277,7 @@ codex-trace --index
 codex-trace --help
 ```
 
-日志路径：当前目录 `.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}`。
+日志路径：当前目录 `.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}`。使用 `--no-open` 时只生成 `.jsonl`。
 
 ### ChatGPT OAuth 模式（推荐）
 
@@ -324,7 +324,7 @@ Codex CLI  →  codex-trace 代理（记录）  →  chatgpt.com（OAuth）/ api
 | `--include-all-requests` | 记录所有代理流量，不仅限于 LLM API 路径 |
 | `--include-sensitive-headers` | 不脱敏记录认证头 |
 | `--log NAME` | 自定义日志文件名前缀 |
-| `--no-open` | 不自动打开 HTML |
+| `--no-open` | 实时记录时只生成 JSONL；`--generate-html` 时不自动打开浏览器 |
 | `--run-with ARGS...` | 将后续参数传给 Codex |
 
 ### Codex 限制
@@ -408,7 +408,7 @@ export SSL_CERT_FILE=CA_CERT_PATH
 
 ### HTML 报告
 
-每次会话生成自包含 HTML 文件（内嵌 CSS/JS），可离线打开。退出时默认自动打开浏览器，可用 `--no-open` 关闭。
+默认每次会话生成自包含 HTML 文件（内嵌 CSS/JS），可离线打开，退出时自动打开浏览器。Claude Code 和 Codex 使用 `--no-open` 时只记录 JSONL，可稍后通过 `--generate-html trace.jsonl --no-open` 生成报告。OpenCode 和正向代理使用 `--no-open` 时仍生成报告，只是不自动打开浏览器。
 
 ### 你将看到的内容
 

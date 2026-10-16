@@ -53,7 +53,7 @@ ${colors.yellow}OPTIONS:${colors.reset}
   --run-with         Pass all following arguments to Codex process
   --include-all-requests Include all proxied API traffic, not just LLM API paths
   --include-sensitive-headers Log sensitive headers (auth tokens, cookies) without redaction
-  --no-open          Don't open generated HTML file in browser
+  --no-open          Live tracing: write JSONL only; --generate-html: don't open browser
   --log              Specify custom log file base name (without extension)
   --codex-path       Specify custom path to Codex binary
   --help, -h         Show this help message
@@ -93,8 +93,9 @@ ${colors.yellow}CONFIG:${colors.reset}
   CODEX_HOME config overlay. Your original config file is never modified.
 
 ${colors.yellow}OUTPUT:${colors.reset}
-  Logs are saved to: ${colors.green}.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,html}${colors.reset}
-  With --log NAME:   ${colors.green}.codex-trace/NAME.{jsonl,html}${colors.reset}
+  Logs are saved to: ${colors.green}.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}${colors.reset}
+  With --log NAME:   ${colors.green}.codex-trace/NAME.{jsonl,json,html}${colors.reset}
+  With --no-open:    Only the .jsonl trace is written (no .json or .html).
 
 For more information, visit: https://github.com/FlyingFish-233/claude-trace
 `);
@@ -113,7 +114,7 @@ For more information, visit: https://github.com/FlyingFish-233/claude-trace
  */
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
-	const { traceArgs, toolArgs, includeAllRequests, openInBrowser, logSensitiveHeaders, logBaseName } =
+	const { traceArgs, toolArgs, includeAllRequests, openInBrowser, jsonlOnly, logSensitiveHeaders, logBaseName } =
 		parseTraceArgs(args);
 
 	if (traceArgs.includes("--help") || traceArgs.includes("-h")) {
@@ -150,6 +151,7 @@ async function main(): Promise<void> {
 	await runWithTracing(codexProfile, toolArgs, {
 		includeAllRequests,
 		openInBrowser,
+		jsonlOnly,
 		logBaseName,
 		logSensitiveHeaders,
 		customBinaryPath: customCodexPath,

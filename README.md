@@ -42,7 +42,7 @@ codex-trace
 vibe-coding-proxy --target-url https://api.deepseek.com/anthropic
 ```
 
-When a session ends, the latest HTML report opens in your browser automatically. For Claude Code tracing, `--no-open` keeps only the JSONL trace; with `--generate-html`, it only suppresses opening the browser.
+When a session ends, the latest HTML report opens in your browser automatically. For Claude Code and Codex tracing, `--no-open` keeps only the JSONL trace; with `--generate-html`, it only suppresses opening the browser.
 
 ## Install
 
@@ -277,7 +277,7 @@ codex-trace --index
 codex-trace --help
 ```
 
-Logs: `.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}` in the current directory.
+Logs: `.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}` in the current directory. With `--no-open`, only `.jsonl` is written.
 
 ### ChatGPT OAuth mode (recommended)
 
@@ -324,7 +324,7 @@ Config lookup: `CODEX_HOME` (overlay) or `~/.codex/config.toml`.
 | `--include-all-requests` | Log all proxied API traffic, not just LLM API paths |
 | `--include-sensitive-headers` | Log auth tokens without redaction |
 | `--log NAME` | Custom log file base name |
-| `--no-open` | Don't open generated HTML in browser |
+| `--no-open` | Live tracing: write JSONL only; `--generate-html`: don't open browser |
 | `--run-with ARGS...` | Pass remaining arguments to Codex |
 
 ### Codex limitations
@@ -408,7 +408,7 @@ The local CA is reused across proxy runs from `~/.claude-trace/vibe-coding-proxy
 
 ### HTML report
 
-Each session produces a self-contained HTML file (embedded CSS/JS) you can open offline. On exit, the browser opens automatically unless you pass `--no-open`.
+By default, each session produces a self-contained HTML file (embedded CSS/JS) you can open offline, and the browser opens on exit. For Claude Code and Codex, `--no-open` records JSONL only; generate a report later with `--generate-html trace.jsonl --no-open`. For OpenCode and the forward proxy, `--no-open` keeps report generation and suppresses the browser.
 
 ### What you'll see
 

@@ -83,7 +83,7 @@ export interface TraceOptions {
 	includeAllRequests?: boolean;
 	/** Open the generated HTML report when the session ends. */
 	openInBrowser?: boolean;
-	/** For Claude tracing, skip derived JSON and HTML artifacts. */
+	/** For Claude and Codex tracing, skip derived JSON and HTML artifacts. */
 	jsonlOnly?: boolean;
 	/** Custom log file base name (without extension) under logDirectory. */
 	logBaseName?: string;

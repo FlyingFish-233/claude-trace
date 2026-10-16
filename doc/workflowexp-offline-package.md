@@ -37,6 +37,11 @@ not need npm, a system Node installation, or network access.
 
 ## Runtime interfaces
 
+Live `claude-trace --no-open` and `codex-trace --no-open` write only JSONL.
+Omit `--no-open` to generate JSONL, JSON and HTML during capture. To generate HTML
+later without opening a browser, use `codex-trace --generate-html trace.jsonl --no-open`
+(or the equivalent `claude-trace` command).
+
 Set an absolute log directory for Pier:
 
 ```bash

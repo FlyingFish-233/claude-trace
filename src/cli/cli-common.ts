@@ -69,7 +69,7 @@ export interface ParsedTraceArgs {
 	toolArgs: string[];
 	includeAllRequests: boolean;
 	openInBrowser: boolean;
-	/** For Claude tracing, --no-open also requests JSONL-only output. */
+	/** For Claude and Codex tracing, --no-open also requests JSONL-only output. */
 	jsonlOnly: boolean;
 	logSensitiveHeaders: boolean;
 	logBaseName?: string;

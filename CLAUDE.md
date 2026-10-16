@@ -203,6 +203,10 @@ Shared across all three CLIs unless noted:
 - `--generate-html FILE [OUT]` — offline HTML from JSONL
 - `--index` — conversation summaries + searchable index
 
+For Claude and Codex live tracing, `--no-open` writes JSONL only (no derived JSON
+or HTML). For offline `--generate-html`, it only suppresses the browser. OpenCode
+and the forward proxy retain their browser-only interpretation of this flag.
+
 Claude-only utilities: `--validate <complete|incomplete> --claude-path PATH`
 requires an absolute `CLAUDE_TRACE_LOG_DIR`; `--export-openai --input PATH
 --output FILE` supports repeatable inputs, optional `--diagnostics FILE`,

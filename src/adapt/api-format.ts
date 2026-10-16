@@ -16,10 +16,10 @@ import type { RawPair } from "../types";
  */
 export function inferApiFormatFromNpm(npm: string): ApiFormat {
 	if (npm.includes("anthropic")) {
-		return "anthropic";
+		return "anthropic-messages";
 	}
 	if (npm.includes("openai-compatible")) {
-		return "openai";
+		return "openai-chat-completions";
 	}
 	if (npm.includes("openai")) {
 		return "openai-responses";
@@ -36,13 +36,13 @@ export function inferApiFormatFromUrl(url: string | undefined): ApiFormat {
 		return "unknown";
 	}
 	if (url.includes("/chat/completions")) {
-		return "openai";
+		return "openai-chat-completions";
 	}
 	if (url.includes("/responses")) {
 		return "openai-responses";
 	}
 	if (url.includes("/messages")) {
-		return "anthropic";
+		return "anthropic-messages";
 	}
 	return "unknown";
 }
@@ -58,7 +58,7 @@ export function inferApiFormatFromBody(body: unknown): ApiFormat {
 	}
 	const record = body as Record<string, unknown>;
 	if ("choices" in record) {
-		return "openai";
+		return "openai-chat-completions";
 	}
 	if ("output" in record && Array.isArray(record.output)) {
 		return "openai-responses";
@@ -66,7 +66,7 @@ export function inferApiFormatFromBody(body: unknown): ApiFormat {
 	if ("content" in record && Array.isArray(record.content)) {
 		const content = record.content as unknown[];
 		if (content.some((block) => typeof block === "object" && block !== null && "type" in block)) {
-			return "anthropic";
+			return "anthropic-messages";
 		}
 	}
 	if ("messages" in record && Array.isArray(record.messages)) {
@@ -81,7 +81,7 @@ export function inferApiFormatFromBody(body: unknown): ApiFormat {
 						"tool_calls" in (msg as object)),
 			)
 		) {
-			return "openai";
+			return "openai-chat-completions";
 		}
 	}
 	return "unknown";
@@ -89,8 +89,8 @@ export function inferApiFormatFromBody(body: unknown): ApiFormat {
 
 /** Human-readable labels shown in the HTML viewer and index summaries. */
 const API_FORMAT_LABELS: Record<ApiFormat, string> = {
-	anthropic: "Anthropic Messages",
-	openai: "OpenAI Chat",
+	"anthropic-messages": "Anthropic Messages",
+	"openai-chat-completions": "OpenAI Chat",
 	"openai-responses": "OpenAI Responses",
 	unknown: "Unknown",
 };

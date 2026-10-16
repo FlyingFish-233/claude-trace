@@ -233,7 +233,7 @@ export function getClaudeTraceLogDirectory(
 /**
  * Claude Code tool profile consumed by `trace-runner.ts`.
  *
- * Supports both V1 Node interceptor and V2+ reverse-proxy interception.
+ * Uses shared reverse-proxy capture for every supported executable.
  * When `settings.json` defines its own `ANTHROPIC_BASE_URL`, a persistent
  * config overlay rewrites that value without modifying the original file.
  */
@@ -349,116 +349,6 @@ export const claudeProfile: ToolProfile = {
 		}
 	},
 
-	/** Claude V1 Node.js installs support the `--require interceptor` hook. */
-	supportsNodeInterceptor(): boolean {
-		return true;
-	},
 };
 
-/**
- * Extract the OAuth bearer token from a live Claude Code session.
- *
- * Spawns Claude via `node --require token-extractor.js` with a minimal prompt,
- * watches for the token written to `.claude-trace/token.txt`, and prints it
- * to stdout (for `export ANTHROPIC_API_KEY=$(claude-trace --extract-token)`).
- *
- * Uses polling (500 ms) and a 30 s timeout so the child can be killed as soon
- * as the token is captured, without waiting for a full Claude session to finish.
- *
- * @param customClaudePath - Optional explicit path from `--claude-path`.
- */
-export async function extractClaudeToken(customClaudePath?: string): Promise<void> {
-	const claudePath = getClaudeAbsolutePath(customClaudePath);
-
-	console.error(`Using Claude binary: ${claudePath}`);
-
-	const claudeTraceDir = path.join(process.cwd(), claudeProfile.logDirectory);
-	if (!fs.existsSync(claudeTraceDir)) {
-		fs.mkdirSync(claudeTraceDir, { recursive: true });
-	}
-
-	const tokenFile = path.join(claudeTraceDir, "token.txt");
-	const tokenExtractorPath = path.join(__dirname, "..", "intercept", "token-extractor.js");
-
-	if (!fs.existsSync(tokenExtractorPath)) {
-		log(`Token extractor not found at: ${tokenExtractorPath}`, "red");
-		process.exit(1);
-	}
-
-	const cleanup = (): void => {
-		try {
-			if (fs.existsSync(tokenFile)) fs.unlinkSync(tokenFile);
-		} catch {
-			// Ignore cleanup errors
-		}
-	};
-
-	// Strip ANTHROPIC_API_KEY so Claude uses OAuth flow instead of API key auth.
-	const { ANTHROPIC_API_KEY: _removed, ...envWithoutApiKey } = process.env;
-	const child: ChildProcess = spawn("node", ["--require", tokenExtractorPath, claudePath, "-p", "hello"], {
-		env: {
-			...envWithoutApiKey,
-			NODE_TLS_REJECT_UNAUTHORIZED: "0",
-			CLAUDE_TRACE_TOKEN_FILE: tokenFile,
-		},
-		stdio: "inherit",
-		cwd: process.cwd(),
-	});
-
-	const timeout = setTimeout(() => {
-		child.kill();
-		cleanup();
-		console.error("Timeout: No token found within 30 seconds");
-		process.exit(1);
-	}, 30000);
-
-	child.on("error", (error: Error) => {
-		clearTimeout(timeout);
-		cleanup();
-		console.error(`Error starting Claude: ${error.message}`);
-		process.exit(1);
-	});
-
-	child.on("exit", () => {
-		clearTimeout(timeout);
-
-		try {
-			if (fs.existsSync(tokenFile)) {
-				const token = fs.readFileSync(tokenFile, "utf-8").trim();
-				cleanup();
-				if (token) {
-					console.log(token);
-					process.exit(0);
-				}
-			}
-		} catch {
-			// File doesn't exist or read error
-		}
-
-		cleanup();
-		console.error("No authorization token found");
-		process.exit(1);
-	});
-
-	// Poll for early token capture so we can kill Claude before full session startup.
-	const checkToken = setInterval(() => {
-		try {
-			if (fs.existsSync(tokenFile)) {
-				const token = fs.readFileSync(tokenFile, "utf-8").trim();
-				if (token) {
-					clearTimeout(timeout);
-					clearInterval(checkToken);
-					child.kill();
-					cleanup();
-					console.log(token);
-					process.exit(0);
-				}
-			}
-		} catch {
-			// Ignore read errors, keep trying
-		}
-	}, 500);
-}
-
-/** Re-exported for `trace-runner.ts` binary detection and V1 path resolution. */
 export { getClaudeBinaryPath, isNativeBinary, resolveToJsFile };

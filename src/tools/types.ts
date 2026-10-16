@@ -3,8 +3,8 @@
  * @description Core abstractions for multi-tool tracing via Tool Profiles.
  *
  * Each supported CLI (Claude Code, OpenCode, Codex) implements `ToolProfile`
- * so `trace-runner.ts` can launch the tool with either a Node.js fetch hook
- * or a local reverse proxy without tool-specific branching in the runner.
+ * so `trace-runner.ts` can launch the tool through a local reverse proxy
+ * without tool-specific branching in the capture kernel.
  */
 
 /** Upstream API endpoint configuration for a single provider (Codex multi-upstream). */
@@ -26,7 +26,7 @@ export interface ProviderRoute {
  * Wire format of the upstream LLM API.
  * Used for parsing, display labels, and adapter selection in the reverse proxy.
  */
-export type ApiFormat = "anthropic" | "openai" | "openai-responses" | "unknown";
+export type ApiFormat = import("../protocols/types").Protocol | "unknown";
 
 /**
  * Model-specific routing entry for OpenCode-style `provider/model` keys.
@@ -73,22 +73,7 @@ export interface ToolProfile {
 	prepareSpawnEnv(proxyUrl: string): { tmpDir: string | null; spawnEnv: NodeJS.ProcessEnv };
 	/** Remove temporary overlay directory created by prepareSpawnEnv. */
 	cleanupTempConfig(tmpDir: string | null): void;
-	/** Whether V1 Node `--require interceptor` mode is supported for this tool. */
-	supportsNodeInterceptor(): boolean;
 }
 
-/** Runtime options passed from CLI entry points to trace-runner. */
-export interface TraceOptions {
-	/** Log all proxied/fetched requests, not only primary message endpoints. */
-	includeAllRequests?: boolean;
-	/** Open the generated HTML report when the session ends. */
-	openInBrowser?: boolean;
-	/** For Claude and Codex tracing, skip derived JSON and HTML artifacts. */
-	jsonlOnly?: boolean;
-	/** Custom log file base name (without extension) under logDirectory. */
-	logBaseName?: string;
-	/** Disable redaction of Authorization, Cookie, and similar headers. */
-	logSensitiveHeaders?: boolean;
-	/** User-supplied path to the tool binary (--claude-path, etc.). */
-	customBinaryPath?: string;
-}
+/** Capture-only launcher options. */
+export interface TraceOptions { logDirectory?: string; logSensitiveHeaders?: boolean; customBinaryPath?: string; apiFormat?: import("../protocols/types").Protocol }

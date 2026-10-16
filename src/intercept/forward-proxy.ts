@@ -15,7 +15,8 @@ import * as tls from "tls";
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "http";
 import { traceRuntimeError } from "../cli/cli-common";
 import { MitmCertificateAuthority, defaultCaDir } from "./mitm-cert";
-import { ProxyLogWriter, type ProxyLogPaths } from "./proxy-log-writer";
+import { TraceWriter } from "../trace/store";
+import { CaptureTransport } from "./transport";
 import { ProxyTargetMatcher, splitHostPort } from "./proxy-targets";
 
 /** Configuration for {@link ForwardProxyServer}. */
@@ -24,14 +25,10 @@ export interface ForwardProxyConfig {
 	host?: string;
 	/** TCP port to bind; `0` lets the OS pick an ephemeral port. */
 	port?: number;
-	/** Directory for JSONL, JSON, and HTML logs. */
+	/** Directory for trace.jsonl and manifest.json. */
 	logDirectory?: string;
-	/** Base name for log files. */
-	logBaseName?: string;
 	/** Log metadata for non-target traffic as well. */
 	includeAllRequests?: boolean;
-	/** Open generated HTML when the proxy stops. */
-	openBrowser?: boolean;
 	/** Keep sensitive headers unredacted in logs. */
 	logSensitiveHeaders?: boolean;
 	/** URL prefixes that should be decrypted and fully logged. */
@@ -49,7 +46,7 @@ export interface ForwardProxyInfo {
 	host: string;
 	port: number;
 	url: string;
-	logs: ProxyLogPaths;
+	logs: { jsonl: string; manifest: string };
 	caCertPath?: string;
 }
 
@@ -62,19 +59,6 @@ interface ForwardTarget {
 	fullUrl: string;
 }
 
-/** Hop-by-hop headers that must not be forwarded upstream. */
-const HOP_BY_HOP_HEADERS = new Set([
-	"connection",
-	"keep-alive",
-	"proxy-authenticate",
-	"proxy-authorization",
-	"proxy-connection",
-	"te",
-	"trailer",
-	"transfer-encoding",
-	"upgrade",
-]);
-
 /**
  * HTTP forward proxy with optional allowlist-scoped HTTPS MITM logging.
  */
@@ -83,13 +67,15 @@ export class ForwardProxyServer {
 		Omit<ForwardProxyConfig, "targetUrls" | "mitmHosts" | "caDir">
 	> & { caDir: string };
 	private readonly targets: ProxyTargetMatcher;
-	private readonly logger: ProxyLogWriter;
+	private readonly logger: TraceWriter;
+	private readonly transport: CaptureTransport;
 	private readonly ca: MitmCertificateAuthority;
 	private readonly server: http.Server;
 	private readonly mitmHttpServer: http.Server;
 	private readonly mitmSocketHosts = new WeakMap<object, string>();
 	private started = false;
 	private stopped = false;
+	private readonly sockets = new Set<net.Socket>();
 
 	/** @param config - Bind, logging, target matching, and MITM options. */
 	constructor(config: ForwardProxyConfig = {}) {
@@ -97,9 +83,7 @@ export class ForwardProxyServer {
 			host: config.host || "127.0.0.1",
 			port: config.port ?? 0,
 			logDirectory: config.logDirectory || ".vibe-coding-proxy",
-			logBaseName: config.logBaseName || "",
 			includeAllRequests: config.includeAllRequests || false,
-			openBrowser: config.openBrowser || false,
 			logSensitiveHeaders: config.logSensitiveHeaders || false,
 			disableMitm: config.disableMitm || false,
 			caDir: config.caDir || defaultCaDir(),
@@ -108,20 +92,17 @@ export class ForwardProxyServer {
 			targetUrls: config.targetUrls,
 			mitmHosts: config.mitmHosts,
 		});
-		this.logger = new ProxyLogWriter({
-			logDirectory: this.config.logDirectory,
-			logBaseName: this.config.logBaseName,
-			includeAllRequests: this.config.includeAllRequests,
-			openBrowser: this.config.openBrowser,
-			logSensitiveHeaders: this.config.logSensitiveHeaders,
-			tool: "vibe-coding-proxy",
-		});
+		this.logger = new TraceWriter(this.config.logDirectory, { client: "vibe-coding-proxy", sensitive: this.config.logSensitiveHeaders });
+        this.transport = new CaptureTransport(this.logger);
 		this.ca = new MitmCertificateAuthority(this.config.caDir);
 		this.server = http.createServer((req, res) => {
 			this.handlePlainHttpRequest(req, res);
 		});
 		this.server.on("connect", (req, socket, head) => {
 			this.handleConnect(req, socket as net.Socket, head);
+		});
+		this.server.on("connection", socket => {
+			this.sockets.add(socket); socket.once("close", () => this.sockets.delete(socket));
 		});
 		this.server.on("clientError", (_error, socket) => {
 			socket.destroy();
@@ -162,7 +143,7 @@ export class ForwardProxyServer {
 					host: this.config.host,
 					port: address.port,
 					url,
-					logs: this.logger.getPaths(),
+					logs: { jsonl: this.logger.file, manifest: this.logger.manifestPath },
 					caCertPath: caInfo?.certPath,
 				});
 			});
@@ -181,7 +162,9 @@ export class ForwardProxyServer {
 		} catch {
 			// The MITM parser server is fed accepted sockets manually and may never listen.
 		}
-		this.logger.stop();
+		this.transport.stop();
+		this.server.closeAllConnections();
+		for (const socket of this.sockets) socket.destroy();
 	}
 
 	/** Handle non-CONNECT requests sent through HTTP_PROXY. */
@@ -202,7 +185,7 @@ export class ForwardProxyServer {
 		const authority = req.url || "";
 		const { hostname, port } = splitHostPort(authority);
 		clientSocket.on("error", (error) => {
-			traceRuntimeError(`vibe-coding-proxy: client socket error for ${authority}: ${error.message}`, this.config.logDirectory);
+			traceRuntimeError(`vibe-coding-proxy: client socket error for ${authority}: ${error.message}`);
 		});
 
 		if (this.config.disableMitm || !this.targets.shouldMitmHost(authority)) {
@@ -226,10 +209,10 @@ export class ForwardProxyServer {
 				this.mitmHttpServer.emit("connection", tlsSocket);
 			});
 			tlsSocket.on("error", (error) => {
-				traceRuntimeError(`vibe-coding-proxy: MITM TLS error for ${authority}: ${error.message}`, this.config.logDirectory);
+				traceRuntimeError(`vibe-coding-proxy: MITM TLS error for ${authority}: ${error.message}`);
 			});
 		} catch (error) {
-			traceRuntimeError(`vibe-coding-proxy: failed MITM setup for ${authority}: ${error}`, this.config.logDirectory);
+			traceRuntimeError(`vibe-coding-proxy: failed MITM setup for ${authority}: ${error}`);
 			clientSocket.write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
 			clientSocket.destroy();
 		}
@@ -264,10 +247,12 @@ export class ForwardProxyServer {
 			}
 			upstream.pipe(clientSocket);
 			clientSocket.pipe(upstream);
-			void this.logger.logConnectMetadata(authority, "CONNECT tunnel passed through without MITM");
+
 		});
+		this.sockets.add(upstream); upstream.once("close", () => this.sockets.delete(upstream));
+		clientSocket.once("close", () => upstream.destroy());
 		upstream.on("error", (error) => {
-			traceRuntimeError(`vibe-coding-proxy: CONNECT error for ${authority}: ${error.message}`, this.config.logDirectory);
+			traceRuntimeError(`vibe-coding-proxy: CONNECT error for ${authority}: ${error.message}`);
 			if (!clientSocket.destroyed) {
 				clientSocket.write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
 			}
@@ -288,77 +273,8 @@ export class ForwardProxyServer {
 		target: ForwardTarget,
 		forceLog: boolean,
 	): void {
-		const requestTimestamp = Date.now();
-		const requestBodyChunks: Buffer[] = [];
-		req.on("data", (chunk: Buffer | string) => {
-			requestBodyChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-		});
-		req.on("error", (error) => {
-			traceRuntimeError(`vibe-coding-proxy: request stream error for ${target.fullUrl}: ${error.message}`, this.config.logDirectory);
-			if (!res.headersSent) {
-				res.writeHead(499);
-			}
-			res.end();
-		});
-		res.on("error", (error) => {
-			traceRuntimeError(`vibe-coding-proxy: response stream error for ${target.fullUrl}: ${error.message}`, this.config.logDirectory);
-		});
-		req.on("end", () => {
-			const requestBody = Buffer.concat(requestBodyChunks);
-			const requestHeaders = buildUpstreamHeaders(req.headers, target);
-			const requestOptions: https.RequestOptions = {
-				protocol: target.protocol,
-				hostname: target.hostname,
-				port: target.port,
-				path: target.path,
-				method: req.method,
-				headers: requestHeaders,
-			};
-			const requestModule = target.protocol === "https:" ? https : http;
-			const upstreamReq = requestModule.request(requestOptions, (upstreamRes) => {
-				const responseTimestamp = Date.now();
-				const responseChunks: Buffer[] = [];
-				res.writeHead(upstreamRes.statusCode || 200, upstreamRes.headers);
-				upstreamRes.on("data", (chunk: Buffer | string) => {
-					const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-					responseChunks.push(buffer);
-					res.write(buffer);
-				});
-				upstreamRes.on("error", (error) => {
-					traceRuntimeError(`vibe-coding-proxy: upstream response error for ${target.fullUrl}: ${error.message}`, this.config.logDirectory);
-					res.end();
-				});
-				upstreamRes.on("end", () => {
-					res.end();
-					void this.logger.logExchange({
-						method: req.method || "GET",
-						url: target.fullUrl,
-						requestHeaders: req.headers,
-						requestBody,
-						statusCode: upstreamRes.statusCode || 0,
-						responseHeaders: upstreamRes.headers,
-						responseChunks,
-						requestTimestamp,
-						responseTimestamp,
-						forceLog,
-					});
-				});
-			});
-			upstreamReq.on("error", (error) => {
-				traceRuntimeError(`vibe-coding-proxy: upstream error for ${target.fullUrl}: ${error.message}`, this.config.logDirectory);
-				if (!res.headersSent) {
-					res.writeHead(502);
-					res.end(`Proxy error: ${error.message}`);
-					return;
-				}
-				res.end();
-			});
-			if (requestBody.length > 0) {
-				upstreamReq.write(requestBody);
-			}
-			upstreamReq.end();
-		});
-	}
+        this.transport.forward(req, res, () => ({ url: target.fullUrl }), undefined, forceLog || this.config.includeAllRequests);
+    }
 }
 
 /** Resolve absolute-form requests used by HTTP forward proxies. */
@@ -391,18 +307,4 @@ function urlToTarget(parsed: URL): ForwardTarget {
 		path: `${parsed.pathname || "/"}${parsed.search || ""}`,
 		fullUrl: parsed.toString(),
 	};
-}
-
-/** Build upstream headers by removing proxy-only hop-by-hop values. */
-function buildUpstreamHeaders(headers: IncomingHttpHeaders, target: ForwardTarget): IncomingHttpHeaders {
-	const upstreamHeaders: IncomingHttpHeaders = {};
-	for (const [key, value] of Object.entries(headers)) {
-		if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
-			upstreamHeaders[key] = value;
-		}
-	}
-	upstreamHeaders.host = target.port === (target.protocol === "http:" ? 80 : 443)
-		? target.hostname
-		: `${target.hostname}:${target.port}`;
-	return upstreamHeaders;
 }

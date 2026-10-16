@@ -3,11 +3,6 @@ set -eu
 script_path="$(readlink -f "$0")"
 bundle_dir="$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)"
 if [ "${CLAUDE_TRACE_ENABLED:-0}" = "1" ]; then
-  exec "$bundle_dir/bin/claude-trace" \
-    --claude-path "$HOME/.local/bin/claude-real" \
-    --include-all-requests \
-    --no-open \
-    --log trace \
-    --run-with "$@"
+  exec "$bundle_dir/bin/claude-trace" --binary "$HOME/.local/bin/claude-real" -- "$@"
 fi
 exec "$HOME/.local/bin/claude-real" "$@"

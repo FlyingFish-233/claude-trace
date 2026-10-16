@@ -513,10 +513,6 @@ export const codexProfile: ToolProfile = {
 		}
 	},
 
-	/** Codex is a Rust binary — no Node.js fetch hook. */
-	supportsNodeInterceptor(): boolean {
-		return false;
-	},
 };
 
 /** Re-exported for `trace-runner.ts` binary detection. */

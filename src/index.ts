@@ -1,25 +1,10 @@
-/**
- * @file index.ts
- * @description Public package entry point for programmatic use of claude-trace.
- *
- * Re-exports the traffic logger (V1 interceptor), HTML generator, offline SFT
- * exporters, Responses conversion and shared types for programmatic consumers.
- */
-
-// Main exports for the package
-export { ClaudeTrafficLogger, initializeInterceptor, getLogger, InterceptorConfig } from "./intercept/interceptor";
-export { HTMLGenerator } from "./report/html-generator";
-export { RawPair, ClaudeData, HTMLGenerationData, TemplateReplacements } from "./types";
-
-// Re-export everything for convenience
-export * from "./intercept/interceptor";
-export * from "./report/html-generator";
-export * from "./types";
-
-// Offline conversion/export functions never launch a coding client.
-export { exportOpenAI } from "./export/openai";
-export type { ExportOpenAIOptions, ExportDiagnostics, ExportedTrajectory } from "./export/openai";
-export { exportCodexOpenAI } from "./export/responses";
-export type { ResponsesTrajectory } from "./export/responses";
-export { convertResponsesRequest } from "./export/responses-conversion";
-export type { ConvertedResponsesRequest, ExportCodexOpenAIOptions } from "./export/responses-conversion";
+/** @file index.ts @description Client-independent public trace API. */
+export * from "./protocols/types";
+export { adapters, detectProtocol, parseSSE } from "./protocols/registry";
+export { TraceWriter, readRecords, inputFiles } from "./trace/store";
+export { exportTraces, validateTraces, transformMessages } from "./trace/offline";
+export { replayTraces } from "./trace/replay";
+export type { ReplayOptions } from "./trace/replay";
+export { reportTraces } from "./trace/report";
+export { ReverseProxyServer } from "./intercept/reverse-proxy";
+export { ForwardProxyServer } from "./intercept/forward-proxy";

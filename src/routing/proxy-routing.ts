@@ -82,14 +82,14 @@ export function normalizeUpstreamPath(
 	modelRoute?: ModelRoute,
 	pathPrefix: string = "",
 ): string {
-	if (modelRoute?.apiFormat === "anthropic" && (urlPath === "/messages" || urlPath.startsWith("/messages?"))) {
-		return urlPath.replace(/^\/messages/, "/v1/messages");
+	if (modelRoute?.apiFormat === "anthropic-messages" && (urlPath === "/messages" || urlPath.startsWith("/messages?"))) {
+		return pathPrefix.endsWith("/v1") ? urlPath : urlPath.replace(/^\/messages/, "/v1/messages");
 	}
 
 	// Some OpenAI-compatible bases already include `/v1` in pathPrefix; avoid `/v1/v1/...`.
 	if (
 		modelRoute &&
-		(modelRoute.apiFormat === "openai" || modelRoute.apiFormat === "openai-responses") &&
+		(modelRoute.apiFormat === "openai-chat-completions" || modelRoute.apiFormat === "openai-responses") &&
 		pathPrefix.endsWith("/v1")
 	) {
 		if (urlPath === "/v1/chat/completions" || urlPath.startsWith("/v1/chat/completions?")) {
@@ -117,13 +117,13 @@ export function inferApiFormatFromPath(urlPath: string | undefined): ApiFormat {
 		return "unknown";
 	}
 	if (urlPath.includes("/chat/completions")) {
-		return "openai";
+		return "openai-chat-completions";
 	}
 	if (urlPath.includes("/responses")) {
 		return "openai-responses";
 	}
 	if (urlPath.includes("/messages")) {
-		return "anthropic";
+		return "anthropic-messages";
 	}
 	return "unknown";
 }

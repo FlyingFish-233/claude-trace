@@ -1,568 +1,67 @@
-# claude-trace
+# claude-trace 5
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+按协议统一采集、导出、校验、报告和重放 LLM HTTP 请求。支持 `anthropic-messages`、`openai-responses`、`openai-chat-completions`。Claude Code、Codex、OpenCode 保留客户端启动器，其余客户端手动设置 base URL 即可接入。
 
-记录 **Claude Code**、**OpenCode**、**Codex CLI** 以及通过独立正向代理接入的指定大模型端点 API 流量。在自包含 HTML 查看器中查看系统提示词、工具输出、思考块以及完整请求/响应数据。
+需要 Node.js 20+。源码构建：`npm install`、`npm --prefix frontend install`、`npm run build`。可直接运行 `node dist/cli/llm-trace.js --help`；安装本包后可使用 npm bin 命令。离线操作不需要安装任何客户端。
 
-**Fork 来源：** 本仓库从 [hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace) fork，而该仓库又从 [badlogic/lemmy 中的 claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace) fork。本项目在此基础上扩展支持 [Claude Code V2+](https://docs.anthropic.com/en/docs/claude-code) 原生二进制、独立的 **[OpenCode](https://opencode.ai)** 命令（多 provider 拦截，Anthropic 与 OpenAI API 格式），以及 **[Codex CLI](https://developers.openai.com/codex/cli) ChatGPT OAuth** 追踪（通过 ChatGPT 账号登录 —— 多数用户的默认 Codex 认证方式）。
+## 使用
 
-## 代理模式总览（正向代理 & 反向代理）
+```sh
+llm-trace capture --upstream https://provider.example/v1 --log-dir captures/run-001
+# Point any client's API base URL at the printed loopback URL.
+llm-trace validate --input captures/run-001 --output validation.json
+llm-trace export --input captures/run-001 --output training.jsonl
+llm-trace report --input captures/run-001 --output report.html
+llm-trace replay --input captures/run-001/trace.jsonl --line-number 1 \
+  --base-url https://target.example/v1 --api-key-env TARGET_API_KEY --output replay/run-001
 
-本项目同时支持 **两种代理模式**：
-
-- **反向代理（内置工具封装）**：`claude-trace`、`opencode-trace`、`codex-trace` 会启动本地反向代理，并在启动目标工具时把其上游 base URL 重定向到代理（因此可以自动记录流量）。
-- **正向代理（独立代理）**：`vibe-coding-proxy` 只启动 HTTP/HTTPS 正向代理。你需要在启动要追踪的客户端之前，先在同一个 shell/session 中 **导出 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`**。
-
-## 支持的工具
-
-| 工具 | CLI 命令 | 日志目录 | 拦截方式 |
-|------|----------|----------|----------|
-| **Claude Code** | `claude-trace` | `.claude-trace/` | V1：`fetch()` 钩子 · V2+：反向代理（`ANTHROPIC_BASE_URL`） |
-| **OpenCode** | `opencode-trace` | `.opencode-trace/` | 反向代理 + 模型路由；支持 Anthropic 与 OpenAI 格式 |
-| **Codex CLI** | `codex-trace` | `.codex-trace/` | 反向代理（`CODEX_HOME` 覆盖）；**ChatGPT OAuth** 与 OpenAI API Key（Responses API） |
-| **独立代理** | `vibe-coding-proxy` | `.vibe-coding-proxy/` | 通过 `HTTP_PROXY` / `HTTPS_PROXY` 使用正向代理；仅对 allowlist 目标做 HTTPS MITM |
-
-三条命令共用同一套 HTML 报告界面、JSONL/JSON 导出，以及 `--index` 会话摘要功能。
-
-## 快速开始
-
-```bash
-npm install -g @uvl000/claude-trace
-
-# Claude Code
-claude-trace
-
-# OpenCode
-opencode-trace
-
-# Codex CLI
-codex-trace
-
-# 独立正向代理
-vibe-coding-proxy --target-url https://api.deepseek.com/anthropic
+claude-trace --log-dir captures/claude-001 -- --print "hello"
+codex-trace --log-dir captures/codex-001 -- exec "hello"
+opencode-trace --log-dir captures/opencode-001 -- run "hello"
 ```
 
-会话结束后会自动在浏览器中打开最新 HTML 报告。Claude Code 和 Codex 记录时使用 `--no-open` 可只保留 JSONL；在 `--generate-html` 模式下则表示不自动打开浏览器。
+`capture` 只启动反向代理，默认监听 `127.0.0.1` 随机端口，输出代理地址与记录路径。可设置 `--host`、`--port`、`--api-format auto|FORMAT`。通用代理一个实例对应一个上游，已有 profile 的多 provider 路由保留。客户端可在打印的代理根地址后追加 `/v1` 或 operation；上游前缀已有 `/v1` 时不重复添加。上游 URL 不接受内嵌凭据、query 或 fragment。
 
-## 安装
+三个客户端入口只接受采集参数：`--log-dir`、`--binary`、`--api-format`、`--include-sensitive-headers`。`--` 后全部传给客户端。默认在各自隐藏目录下创建唯一运行目录。保留已有配置覆盖逻辑，不改原始配置。仅启动客户端时查询其版本；离线命令不会启动客户端。
 
-### 从 npm 安装
+正向代理示例：`vibe-coding-proxy --log-dir captures/forward-001 --mitm-host api.example.com`。`--target-url`、`--mitm-host` 可重复，HTTPS 仅解密白名单目的地；其他 CONNECT 仅隧道转发。客户端通过 `SSL_CERT_FILE` 或 `NODE_EXTRA_CA_CERTS` 等方式信任打印出的 CA；不自动安装系统证书。`--no-mitm` 关闭 HTTPS 解密，`--include-all-requests` 额外记录非目标的明文/已解密 HTTP。
 
-```bash
-npm install -g @uvl000/claude-trace
-```
+## 采集数据
 
-### 从源码安装
+每次运行默认只有 `manifest.json` 和 `trace.jsonl`。schema v2 一行对应一次请求尝试，重试单独记录；包含 run/request ID、协议、请求、原生 JSON 或完整 SSE 文本、结束状态、错误，以及开始/响应头/首 chunk/结束的毫秒时间。解压仅用于记录，不改变转发字节；无法解码的数据以 base64 保留。未知协议也保存原文和诊断。断流、取消和正常停机保存部分记录；不承诺 SIGKILL 或掉电后的在途恢复。
 
-```bash
-git clone https://github.com/FlyingFish-233/claude-trace.git
-cd claude-trace
-npm run setup   # 安装根目录 + frontend 依赖
-npm run build
-npm link        # 可选：全局可用 claude-trace、opencode-trace、codex-trace 与 vibe-coding-proxy
-# 不 link 则用 node dist/cli/cli.js / node dist/cli/opencode-cli.js / node dist/cli/codex-cli.js / node dist/cli/vibe-coding-proxy-cli.js
-```
+默认脱敏 Authorization、Cookie 等敏感头，不是通用的 prompt/body/query 内容清洗。原始数据保全以此规则为边界。显式 `--include-sensitive-headers` 可关闭头脱敏；validate 会诊断未脱敏凭据，不原地清洗文件。
 
-## Claude Code（`claude-trace`）
+export/validate/report 的 `--input` 可重复，接受文件或目录；目录仅递归读取 schema-v2 manifest 指向的 trace，避免误读训练结果或 replay 报告。不覆盖已有输出或运行目录；不兼容、不删除、不批量转换历史 schema-v1 记录。
 
-### 使用
+## 导出
 
-```bash
-# 启动 Claude Code 并记录日志（自动识别 V1 JS / V2+ 原生二进制）
-claude-trace
+统一输出 `messages + tools + metadata`。成功、完整的模型返回标记 `trainable: true`，请求历史标记 false。metadata 记录协议、来源请求与物理行、usage、推理来源和分段原因。失败、截断或不支持的多模态/工具结构跳过，原因写到 `<output>.diagnostics.json`。Responses 的完整 reasoning_text 不再漏掉；summary 与加密推理单独记录来源信息，不冒充完整推理；加密原文仍在原始记录中。
 
-# 记录所有 API 请求（代理模式默认只记录 /v1/messages）
-claude-trace --include-all-requests
+以下选项默认全部关闭，按顺序作用于规范化后的消息：
 
-# 记录敏感 header 且不脱敏（请谨慎使用）
-claude-trace --include-sensitive-headers
+1. `--convert-developer-to-system`：原位转换 developer；无法保留的专有语义给出诊断。
+2. `--filter-system-messages`：只保留第一条 system。
+3. `--merge-system-messages`：剩余 system 用双换行拼接并置于开头。
 
-# 向 Claude 传递参数
-claude-trace --run-with chat --model sonnet-3.5
+Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/合并不依赖 developer 转换，未转换 developer 保留原位。轨迹关联使用转换前历史，按 run、协议、明确 session header 隔离；工具变化、歧义、压缩或历史分叉新建片段。不会跨运行拼接。
 
-# 指定 Claude 二进制路径
-claude-trace --claude-path /usr/local/Caskroom/claude-code/2.1.153/claude
+## 校验与报告
 
-# 提取 OAuth token（V1 Node.js 路径）
-claude-trace --extract-token
+validate 独立报告采集完整性、协议有效性、HTTP 成功、模型完成。完整采到的 401/429 可以是有效采集，但不是训练目标；token 截断单独标记。只检查已有工具历史，不要求末尾新生成的 tool call 已有结果。`--outcome incomplete` 不会自动升级。退出码：有效且完整 0；无效或不完整 1；命令参数错误 2。HTML 离线生成，展示原始请求/响应与独立校验结果。
 
-# 从已有 .jsonl 生成 HTML 报告
-claude-trace --generate-html logs.jsonl report.html
+## 重放
 
-# 生成会话摘要与可搜索索引
-claude-trace --index
+必须提供完整 API 前缀 `--base-url https://host/v1`，不要填 operation 地址。使用可重复的 `--line-number N` 选择一个 trace 文件的物理行，或显式 `--seed N [--count N]` 做可复现抽样，两种模式互斥。`--output DIR` 默认创建 `replay-<timestamp>`。
 
-claude-trace --help
-```
+`--stream preserve|on|off` 默认 preserve。可设置 `--model`、`--max-tokens`、`--concurrency`（默认 1）、`--timeout-ms`（默认 120000）、`--api-key-env`。token 参数由协议映射；默认保留其他请求参数。原始认证不重用，目标 key 分别作为 Messages 的 x-api-key 或 OpenAI 的 Bearer。`--auth-scheme protocol|bearer|x-api-key` 默认 protocol；若目标（例如 vLLM）在 Messages 接口也要求 Bearer，应显式选择 bearer。带 previous_response_id、conversation、previous_input_messages 的服务端历史依赖在发送前拒绝。不跨协议、不执行工具、不自动续轮。
 
-日志路径：当前目录 `.claude-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}`；Claude Code 使用 `--no-open` 时只生成 `.jsonl`。
+输出新 manifest、trace 与 replay.json，包含来源索引、实际发送请求及结果，可继续 validate/export/report。HTTP 200 不等于模型正常完成。
 
-### CLI 选项
+## 开发与迁移
 
-| 参数 | 说明 |
-|------|------|
-| `--include-all-requests` | 记录所有 API 流量，不仅限于 `/v1/messages` |
-| `--include-sensitive-headers` | 记录 auth token、cookie 等，不做脱敏 |
-| `--log NAME` | 自定义日志文件名（不含扩展名） |
-| `--claude-path PATH` | Claude 二进制路径（省略则自动检测） |
-| `--no-open` | Claude Code 记录时只生成 JSONL；`--generate-html` 时不自动打开浏览器 |
-| `--run-with ARGS...` | 将后续参数传给 Claude |
-| `--extract-token` | 提取 OAuth token 后退出 |
-| `--generate-html FILE [OUT]` | 从 JSONL 生成 HTML 报告 |
-| `--index` | 生成会话摘要与索引 |
-| `--validate MODE` | 校验 `complete`/`incomplete` 采集；需指定 `--claude-path` 和绝对路径 `CLAUDE_TRACE_LOG_DIR` |
-| `--export-openai` | 使用可重复的 `--input PATH` 和 `--output FILE` 导出轨迹 |
-| `--diagnostics FILE` | 导出时保存逐请求诊断 |
-| `--filter-system-messages` | 导出时只保留第一条内联 system 消息 |
-| `--merge-system-messages` | 导出时将内联 system 消息合并到顶部，默认关闭 |
+必跑：`npm run typecheck`、`npm run test:unit`、`npm run build`。测试使用 mock upstream 与受控客户端，覆盖原文保全、协议转换、错误/取消、轨迹关联及 replay。构建会清理旧 dist；离线打包脚本检查所有入口并要求干净 Git 工作区，不自动发布。
 
-### Claude Code V2+（原生二进制）
+参见 [MIGRATION.md](MIGRATION.md)。本次不修改外部 WorkflowExp、不替换线上安装、不发布 npm、不处理历史 trace。
 
-Claude Code V2 以**原生二进制**分发（macOS Mach-O / Linux ELF / Windows PE），不再是 Node.js 脚本。原有 `node --require interceptor claude` 方式已不可用。
-
-| Claude Code 版本 | 二进制类型 | 拦截模式 |
-|------------------|------------|----------|
-| V1.x | Node.js 脚本 | 通过 `--require` 注入 `interceptor-loader.js` |
-| **V2+** | 原生二进制 | 本地反向代理；重定向 `ANTHROPIC_BASE_URL` |
-
-流程：
-
-1. 在 `127.0.0.1` 启动本地 HTTP 反向代理
-2. 通过 `ANTHROPIC_BASE_URL` 将 Claude Code 指向代理
-3. 转发流量到真实上游（`~/.claude/settings.json` 或环境变量）
-4. 实时写入 `.claude-trace/`
-
-若 `~/.claude/settings.json` 已设置 `ANTHROPIC_BASE_URL`，会使用持久化配置 overlay（`~/.claude-trace/claude-config-overlay/`）：仅重写 `settings.json` 去掉该项，其余条目尽量通过符号链接指向原配置（Windows 目录用 junction，文件 symlink 失败则复制）。**单项链接失败不会阻断启动**，代理仍可用；跳过的条目仅在 `CLAUDE_TRACE_DEBUG=1` 时输出到 stderr。
-
-### 第三方模型（CC-Switch 与自定义端点）
-
-支持任何通过自定义 `ANTHROPIC_BASE_URL` 路由 Claude Code 的方案——[CC-Switch](https://github.com/farion1231/cc-switch)、LiteLLM、企业网关、自托管代理等。
-
-```
-Claude Code  →  claude-trace 代理（记录）  →  CC-Switch / 自定义端点  →  模型提供商
-```
-
-CC-Switch 示例：
-
-```bash
-# CC-Switch 写入 ~/.claude/settings.json 后：
-claude-trace
-```
-
-手动指定上游：
-
-```bash
-export ANTHROPIC_BASE_URL="https://your-gateway.example.com"
-claude-trace
-```
-
-注意事项：
-
-- 上游需支持 **Anthropic Messages API**（`/v1/messages`），或使用能转换为该格式的网关
-- API Key 及 settings 中的其他 `env` 项会保留——仅在本地覆盖 `ANTHROPIC_BASE_URL`
-- HTML 日志会显示实际上游 URL 和每次请求的模型名
-
-### 请求过滤（Claude）
-
-**代理模式（V2+）：** 默认 `/v1/messages`；`--include-all-requests` 记录所有代理流量。
-
-**拦截模式（V1，Node.js）：** 默认记录上下文中消息数 > 2 的 `/v1/messages`；`--include-all-requests` 记录所有 `api.anthropic.com` 请求。
-
----
-
-## OpenCode（`opencode-trace`）
-
-### 使用
-
-```bash
-# 启动 OpenCode TUI 并记录日志
-opencode-trace
-
-# 单次 prompt
-opencode-trace --run-with run "Explain async/await"
-
-# 指定模型
-opencode-trace --run-with run -m my-deepseek/deepseek-v4-flash "Refactor this module"
-
-# 从已有会话生成 HTML
-opencode-trace --generate-html .opencode-trace/log-2025-01-01-12-00-00.jsonl
-
-# 生成会话索引
-opencode-trace --index
-
-opencode-trace --help
-```
-
-日志路径：当前目录 `.opencode-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}`。代理运行时错误追加写入 `.opencode-trace/proxy-errors.log`。
-
-### 拦截原理
-
-OpenCode 为原生二进制。`opencode-trace` 启动本地反向代理，并通过 `OPENCODE_CONFIG_CONTENT` 注入运行时配置覆盖——**不会修改原始 `opencode.json`**。
-
-配置中所有 provider 的 `baseURL` 均指向本地代理。代理从请求体读取 `model` 字段，映射到对应 provider 与真实上游 URL，再转发请求。支持 **Anthropic**（`/v1/messages`）与 **OpenAI** 格式（`/v1/chat/completions`、`/v1/responses`，即 `@ai-sdk/openai-compatible` 与 `@ai-sdk/openai`）。
-
-```
-OpenCode  →  opencode-trace 代理（记录）  →  provider baseURL（DeepSeek、MiniMax 等）
-```
-
-配置读取顺序：
-
-1. 环境变量 `OPENCODE_CONFIG`
-2. `OPENCODE_CONFIG_DIR/opencode.json`
-3. `~/.config/opencode/opencode.json`
-4. 当前目录 `.opencode/opencode.json`
-
-### 支持的 API 格式
-
-| OpenCode `npm` 包 | API 格式 | 端点 | 对话视图标签 |
-|-------------------|----------|------|--------------|
-| `@ai-sdk/anthropic` | Anthropic Messages | `/v1/messages` | Anthropic Messages |
-| `@ai-sdk/openai-compatible` | OpenAI Chat Completions | `/v1/chat/completions` | OpenAI Chat |
-| `@ai-sdk/openai` | OpenAI Responses | `/v1/responses` | OpenAI Responses |
-
-代理从请求体读取 `model` 字段，路由到对应 provider 的 `baseURL`。同一 provider 下可通过 per-model `npm` 混用 chat 与 responses API。未在 `opencode.json` 中显式声明的模型，可通过 provider 级回退路由（`providerId/*`）匹配。
-
-### CLI 选项
-
-| 参数 | 说明 |
-|------|------|
-| `--opencode-path PATH` | OpenCode 二进制路径（省略则自动检测） |
-| `--include-all-requests` | 记录所有代理流量，不仅限于 messages 端点 |
-| `--include-sensitive-headers` | 不脱敏记录 auth 头 |
-| `--log NAME` | 自定义日志文件名 |
-| `--no-open` | 不自动打开 HTML |
-| `--run-with ARGS...` | 传递给 OpenCode 的参数 |
-
-### 调试
-
-默认情况下运行时日志**静默输出**，避免污染 OpenCode TUI 输入框。
-
-| 输出内容 | 默认行为 | 设置 `OPENCODE_TRACE_DEBUG=1` 后 |
-|----------|----------|----------------------------------|
-| 每次请求路由（model → provider → 上游 URL） | 不输出 | 打印到 stderr |
-| 代理错误（如上游 TLS 连接失败） | 写入 `.opencode-trace/proxy-errors.log` | 同时打印到 stderr |
-
-```bash
-OPENCODE_TRACE_DEBUG=1 opencode-trace
-```
-
-当模型未正确路由、日志缺少请求，或上游连接失败时，可使用此命令排查。
-
-### OpenCode 当前限制
-
-- **对话视图**支持 Anthropic 格式（`@ai-sdk/anthropic`）与 OpenAI 格式（`@ai-sdk/openai-compatible`、`@ai-sdk/openai`）provider；复杂字段（多模态、reasoning 等）可能仅在 Raw/JSON 视图中完整展示。
-- 尚未拦截未在 `opencode.json` 中定义的内置 `models.dev` provider。
-
----
-
-## 重放已采集请求
-
-两个 CLI 都可将一条 trace 请求发送到指定模型服务，不启动编码客户端：
-
-```bash
-claude-trace --replay trace.jsonl --line-number 12 --base-url http://127.0.0.1:30011 --output claude-replay.json
-codex-trace --replay session.jsonl --line-number 34 --base-url http://127.0.0.1:30011 --model target-model --max-tokens 128
-claude-trace --replay trace.jsonl --trace-line 12 --trace-line 15 --concurrency 2 --output claude-replays.json
-codex-trace --replay session.jsonl --line-number 1 --line-number 3 --concurrency 2 --output codex-replays.json
-```
-
-`--line-number`（别名 `--trace-line`）按 JSONL 文件从 1 开始的物理行号选择，可重复传入。`--concurrency N` 限制同时发送的请求数，默认 1。发送前会验证所有指定行，重复行号会报错；多行结果按参数顺序保存，不受完成顺序影响。单行保留原记录格式；多行写入一个 JSON 文件，包含 `selected_line_numbers`、`concurrency_limit`、`counts` 和按顺序排列的 `results` 记录数组。任一请求失败时命令返回非零，但保留所有响应。省略行号时随机选一条可重放的 POST 请求，`--seed N` 可固定选择结果，不能与显式行号同时使用。目标地址使用 `--base-url` 加 `/v1/messages` 或 `/v1/responses`；Codex 的 `/backend-api/codex/responses` 也会映射到 `/v1/responses`，原请求的查询参数会保留。`--model` 和 `--max-tokens` 覆盖请求体；token 字段在 Messages 中为 `max_tokens`，在 Responses 中为 `max_output_tokens`。默认设置 `stream=false`；`--preserve-stream` 保持流式并将 SSE 保存为文本。`--timeout SEC` 默认 1800 秒。
-
-原始认证信息、Cookie、压缩和传输相关请求头不会转发。用 `--api-key-env VAR` 从环境变量读取目标服务密钥，同时发送 `x-api-key` 和 Bearer 认证；记录中会脱敏。JSON 记录包含原始请求、实际发送的请求、响应正文及状态和耗时。`--output FILE` 不覆盖已有文件；省略时写入 trace 旁的 `replays/` 目录。HTTP 或网络失败也会保存记录并返回退出码 1。重放不能与其他功能模式或 `--run-with` 同时使用。
-
-## Codex CLI（`codex-trace`）
-
-### 导出 Responses 轨迹用于训练和聊天模板
-
-```bash
-codex-trace --export-openai --input .codex-trace --output sft.jsonl --diagnostics diagnostics.json
-codex-trace --export-openai --input session.jsonl --output merged.jsonl --convert-developer-to-system --merge-system-messages
-```
-
-这是不启动 Codex 的离线模式。`--input` 支持任意文件名的 `.jsonl`、递归目录以及重复输入；
-拒绝覆盖已有输出或诊断文件。`--convert-developer-to-system` 在原位置把 developer
-转为 system，并移除其 `tools` 字段。`--filter-system-messages` 随后只保留第一条
-system，丢弃后续 system；存在顶层 `instructions` 时，它算第一条。
-`--merge-system-messages` 则将所有 system 移到顶部，以 `\n\n` 连接。
-filter 和 merge 都要求先开启 developer 转换。三个选项默认关闭；同时开启时，顺序为
-转换、过滤、合并。导出与其他功能模式、实时采集选项互斥；
-`--run-with` 后的参数仍透传给客户端。
-
-转换参考当前安装的 vLLM `0.30.1rc1.dev619+g5f30fc703` 的 **非 Harmony、纯文本** 路径：
-`renderers/online_renderer.py::render_responses`、
-`entrypoints/openai/responses/utils.py::construct_input_messages`、`construct_tool_dicts`，
-以及后续的字符串聊天内容预处理。保留 system/developer/user 消息位置，文本块以换行连接，
-合并相邻 assistant 的思考、文本和函数调用，将工具参数 JSON 解析为对象，将命名空间工具名
-展开为 `namespace__name`，同时提供 `reasoning` 和 `reasoning_content` 以兼容模板。
-
-每行输出包含 `messages`、`tools` 和来源 `metadata`，与 Claude 导出结构一致。
-只有真实、完整的模型输出标记 `trainable: true`；请求历史、system 和工具结果为 false。
-兼容的完整历史拼接成轨迹，历史变化或衔接有歧义时分段，重复采集去重。支持 JSON 和完整 SSE
-响应，以及 API Key/ChatGPT 的 `/responses` 路由。`metadata.rounds` 记录来源文件和行号；
-`metadata.response_message_ranges` 记录每轮响应消息的左闭右开索引范围，因为一轮 Responses
-可能包含多条 assistant 消息，不能假设每轮只有一条 assistant。
-
-导出器不请求服务端历史。`previous_response_id`、服务端会话、加密思考、多模态或内置/自定义
-工具、不完整响应，以及会被 vLLM 截断的内容，会明确诊断并跳过；不替代 Harmony 渲染器。
-`tool_choice=none` 沿用 vLLM 默认的保留函数工具定义行为。模板参数保留在每轮 parameters
-中，但 JSONL 导出器不执行模板渲染。
-
-程序接口为 `exportCodexOpenAI(inputs, output, diagnostics?, options?)` 和
-`convertResponsesRequest(body, options?)`，三个 system 选项都默认关闭。后者返回单个完整
-请求的模板用 `messages/tools`，前者附加轨迹和训练来源。独立比对提示词时，取对应响应范围
-`start` 之前的消息前缀，使用目标 tokenizer/template 和相同的模板参数渲染。
-
-当前 Qwen 模板可同时开启 `--convert-developer-to-system` 和 `--merge-system-messages`，在导出时完成 vLLM HF 渲染器中的
-developer 转换与 system 合并，然后直接使用该模板渲染。其他模板可只转换 developer 或保持默认；
-导出器不会自动判断目标模板。仅开启 developer 转换会保留消息位置；过滤会丢弃后续指令，
-忠实复现完整提示词时无需开启过滤。
-Codex 的程序选项类型为 `ExportCodexOpenAIOptions`；Claude 导出继续使用原有的内联
-system 过滤和直接拼接语义。
-
-**主要认证方式：ChatGPT OAuth。** 若你通过 ChatGPT 账号登录 Codex（多数安装的默认方式），`codex-trace` 可完整追踪该路径 —— 多轮对话、zstd 压缩请求与 SSE 流式响应均能在 HTML 报告中正确展示。
-
-### 用法
-
-```bash
-# 启动 Codex TUI 并记录流量（支持 ChatGPT OAuth 或 API Key）
-codex-trace
-
-# 无头单次执行
-codex-trace --run-with exec "Explain async/await"
-
-# 从历史日志生成 HTML
-codex-trace --generate-html .codex-trace/log-2025-01-01-12-00-00.jsonl
-
-# 生成会话索引
-codex-trace --index
-
-codex-trace --help
-```
-
-日志路径：当前目录 `.codex-trace/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}`。使用 `--no-open` 时只生成 `.jsonl`。
-
-### ChatGPT OAuth 模式（推荐）
-
-多数用户通过 **ChatGPT 登录** 使用 Codex（`codex login` 或 TUI 内登录）。`codex-trace` 读取 `~/.codex/auth.json`，当 `auth_mode` 为 `"chatgpt"` 时，将所有 LLM 流量路由到 ChatGPT OAuth 上游（`chatgpt.com/backend-api/codex`）——**即使 shell 中为其他工具设置了 `OPENAI_BASE_URL`**（如 Cursor、LiteLLM 等）也不受影响。
-
-| 检查项 | 预期 |
-|--------|------|
-| 认证文件 | `~/.codex/auth.json` 含 `"auth_mode": "chatgpt"` |
-| 会话数据 | 从真实 `$CODEX_HOME` symlink，OAuth token 不会被改写 |
-| HTML 报告 | 多轮对话完整展示每条 assistant 回复，含最后一轮 |
-
-```
-Codex CLI（ChatGPT OAuth）  →  codex-trace 代理（记录）  →  chatgpt.com/backend-api/codex
-```
-
-**提示：** 请先完成 ChatGPT 登录，再启动 `codex-trace`。若在 trace 会话中途于 Codex 内切换认证方式，建议重新运行 `codex-trace`。
-
-### OpenAI API Key 模式
-
-若使用 **OpenAI API Key** 而非 ChatGPT 登录，流量经 `openai_base_url` / `OPENAI_BASE_URL` / `api.openai.com`（或自定义网关）路由。请勿将 ChatGPT OAuth token 与自定义 `OPENAI_BASE_URL` 网关混用 —— 同一时间只应使用一种认证方式。
-
-### 拦截原理
-
-Codex CLI 为 Rust 原生二进制。`codex-trace` 启动本地反向代理，并在 `~/.claude-trace/codex-config-overlay/` 构建配置覆盖层——**不会修改原始 `~/.codex/config.toml`**。
-
-覆盖层将 `openai_base_url`、`chatgpt_base_url` 及自定义 `model_providers.*.base_url` 改写为代理地址。`auth.json` 与会话数据通过 symlink 保留，ChatGPT OAuth 可继续使用。代理根据 **`auth.json` 的 auth 模式**（ChatGPT OAuth 或 API Key）与请求路径选择上游：
-
-- **ChatGPT OAuth**（`auth_mode: "chatgpt"`）：`/responses`、`/v1/responses`、`/backend-api/codex/...` → `chatgpt.com`
-- **ChatGPT Apps MCP**（`codex_apps`）：`/api/codex/apps` → `chatgpt.com/backend-api/wham/apps`；`/backend-api/wham/...` → `chatgpt.com`（站点根路径）
-- **OpenAI API Key**：`/v1/responses`、`/responses` → `openai_base_url` / `OPENAI_BASE_URL` / 默认 OpenAI 主机
-- **自定义 `model_providers`**：非保留 provider id 且配置了 `base_url` 的条目
-
-```
-Codex CLI  →  codex-trace 代理（记录）  →  chatgpt.com（OAuth）/ api.openai.com / 自定义 provider
-```
-
-配置查找：`CODEX_HOME`（覆盖层）或 `~/.codex/config.toml`。
-
-### CLI 选项
-
-| 参数 | 说明 |
-|------|------|
-| `--codex-path PATH` | Codex 二进制路径（省略则自动检测） |
-| `--include-all-requests` | 记录所有代理流量，不仅限于 LLM API 路径 |
-| `--include-sensitive-headers` | 不脱敏记录认证头 |
-| `--log NAME` | 自定义日志文件名前缀 |
-| `--no-open` | 实时记录时只生成 JSONL；`--generate-html` 时不自动打开浏览器 |
-| `--run-with ARGS...` | 将后续参数传给 Codex |
-
-### Codex 限制
-
-- 覆盖层强制 `supports_websockets = false`，确保 HTTP/SSE 流量可被记录。
-- 内置 provider ID（`openai`、`ollama`、`lmstudio`）不能通过 `model_providers` 覆盖；ChatGPT OAuth 使用 `chatgpt_base_url`，API Key 模式使用 `openai_base_url`。
-- **Ollama / LM Studio** 内置 provider 不会被拦截（流量绕过代理）。
-- 旧版 `auth.json` 若无 `auth_mode` 字段，会回退到旧启发式；若 OAuth 路由异常，请重新用 ChatGPT 登录。
-- **Node.js：** Codex ChatGPT OAuth 追踪在 **Node.js 16+** 即可正常使用（代理原样转发 zstd 请求体）。建议 **Node.js 22+**，以便在日志与 HTML 中解压展示 zstd 压缩的请求体；Node 16–21 下请求条目会显示占位符而非解析后的 JSON（响应解析与代理行为不受影响）。
-
----
-
-## 独立正向代理（`vibe-coding-proxy`）
-
-`vibe-coding-proxy` 只启动代理服务，不启动 Claude Code、OpenCode、Codex 或其他客户端。任意兼容 CLI 都可以通过 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY` 指向启动后打印的代理 URL。
-
-### 兼容性与使用顺序
-
-- **已测试通过的客户端**：Claude Code、OpenCode、Codex CLI。其他客户端若遵循标准代理环境变量，理论上也可能可用，但目前未做测试。
-- **必须先设环境变量再启动**：先启动 `vibe-coding-proxy` → 在同一个 shell/session 里导出环境变量 → 再启动客户端/工具。若先启动客户端，它可能不会读取到新的代理设置。
-
-### 用法
-
-```bash
-# 记录指定 DeepSeek Anthropic 兼容端点
-vibe-coding-proxy --target-url https://api.deepseek.com/anthropic
-
-# 记录某个主机下的所有 HTTPS 请求
-vibe-coding-proxy --mitm-host api.deepseek.com
-
-# 使用固定本地端口
-vibe-coding-proxy --target-url https://api.deepseek.com --port 8888
-
-# 从历史 .jsonl 生成 HTML
-vibe-coding-proxy --generate-html .vibe-coding-proxy/log-2025-01-01-12-00-00.jsonl
-```
-
-启动后导出打印的代理 URL：
-
-```bash
-export HTTP_PROXY=http://127.0.0.1:PORT
-export HTTPS_PROXY=http://127.0.0.1:PORT
-export ALL_PROXY=http://127.0.0.1:PORT
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-export SSL_CERT_FILE=CA_CERT_PATH
-```
-
-日志路径：当前目录 `.vibe-coding-proxy/log-YYYY-MM-DD-HH-MM-SS.{jsonl,json,html}`。
-
-### HTTPS 记录与 CA 信任
-
-通过 `HTTPS_PROXY` 发送的 HTTPS 请求通常先发起 `CONNECT host:443`，代理无法直接看到 JSON body。为了记录请求/响应 body，`vibe-coding-proxy` 只会对 `--target-url` / `--mitm-host` allowlist 命中的目标执行 MITM，并打印本地 CA 证书路径。
-
-只应在你希望检查模型流量的客户端中信任该 CA。命令不会自动把 CA 安装到系统信任链。`NODE_TLS_REJECT_UNAUTHORIZED=0` 只对 Node.js 客户端有效；Codex ChatGPT OAuth 是 Rust 客户端，通常需要 `SSL_CERT_FILE` 或操作系统级信任该 CA。未命中 allowlist 的 HTTPS 流量会作为原始 CONNECT 隧道透传，仅在开启 `--include-all-requests` 时记录元数据。
-
-### 本地 CA 生命周期
-
-本地 CA 默认复用 `~/.claude-trace/vibe-coding-proxy-ca/`，除非你传入 `--ca-dir`。`ca.crt` 有效期为 10 年；按主机缓存的 leaf 证书（如 `api.deepseek.com.crt.pem`）有效期为 1 年。leaf 证书过期会自动重签。CA 过期时会重新生成，并清理所有旧 leaf 证书；此时需要重新信任新的 CA。
-
-
-### CLI 选项
-
-| 参数 | 说明 |
-|------|------|
-| `--target-url URL` | 解密并完整记录的 URL 前缀（可重复） |
-| `--mitm-host HOST` | 解密并完整记录的主机名（可重复） |
-| `--host HOST` | 监听地址（默认 `127.0.0.1`） |
-| `--port PORT` | 监听端口（默认 `0`，随机） |
-| `--log-dir DIR` | 日志目录（默认 `.vibe-coding-proxy`） |
-| `--log NAME` | 自定义日志文件名前缀 |
-| `--ca-dir DIR` | 本地 CA 与 leaf 证书缓存目录 |
-| `--no-mitm` | 禁用 TLS MITM；HTTPS CONNECT 仅透传 |
-| `--include-all-requests` | 记录透传 CONNECT 元数据与非目标 HTTP 流量 |
-| `--include-sensitive-headers` | 不脱敏记录认证头 |
-| `--no-open` | 退出时不自动打开 HTML |
-| `--generate-html FILE [OUT]` | 从 JSONL 生成 HTML 报告 |
-
----
-
-## 共用功能
-
-### HTML 报告
-
-默认每次会话生成自包含 HTML 文件（内嵌 CSS/JS），可离线打开，退出时自动打开浏览器。Claude Code 和 Codex 使用 `--no-open` 时只记录 JSONL，可稍后通过 `--generate-html trace.jsonl --no-open` 生成报告。OpenCode 和正向代理使用 `--no-open` 时仍生成报告，只是不自动打开浏览器。
-
-### 你将看到的内容
-
-- **系统提示词** — 发送给模型的隐藏指令
-- **工具定义与输出** — 参数及原始工具结果
-- **思考块** — 内部推理过程（如有）
-- **Token 用量** — 含缓存命中的详细统计
-- **原始 JSONL 日志** — 完整请求/响应对
-- **交互式查看器** — 对话、原始 HTTP、JSON 调试等视图
-- **API 格式标签** — 每个会话头部显示请求格式（如 `8 messages · OpenAI Chat`）
-
-### 会话索引
-
-```bash
-claude-trace --index
-# 或
-opencode-trace --index
-# 或
-codex-trace --index
-```
-
-扫描日志文件，通过 Claude CLI 为有意义会话生成摘要，并输出可搜索的 `index.html`。**注意：** 索引会产生额外 API token 消耗。
-
-### 校验轨迹
-
-```bash
-export CLAUDE_TRACE_LOG_DIR=/absolute/path/to/trace-directory
-claude-trace --validate complete --claude-path /path/to/claude
-claude-trace --validate incomplete --claude-path /path/to/claude
-```
-
-检查 `trace.jsonl` 的请求/响应结构、成功的 Messages API 交互和敏感头脱敏情况，生成 `metadata.json`，并将 JSON 元数据输出到标准输出；过程中可能清除轨迹中的密钥残留。`complete` 表示调用方声明采集正常结束：检查失败则标记 incomplete 并返回 1。`incomplete` 表示采集中断：仍执行检查，状态始终为 incomplete，但不会仅因检查发现问题而返回非零退出码。校验参数无效、日志目录未设置或不是绝对路径时返回 2。这不代表 Agent 是否正确完成任务。
-
-### 导出 OpenAI SFT 轨迹
-
-```bash
-claude-trace --export-openai --input /path/to/run-a --input /path/to/run-b/trace.jsonl --output sft.jsonl
-# 可选：--diagnostics diagnostics.json --filter-system-messages --merge-system-messages
-```
-
-目录输入会递归查找 `trace.jsonl`。已有输出不会被覆盖；默认只生成 JSONL 文件。需要保存逐请求诊断时传入 `--diagnostics FILE`；跳过和去重的请求也会在命令输出中报告。每行包含 `messages`、`tools` 和 `metadata`。历史消息标记 `trainable: false`，实际响应标记 `trainable: true`，其来源记录在 `metadata.response_sources` 中。
-
-默认将请求顶层 `system` 转为开头的 system 消息，内联 system 消息保留原来的相对位置和独立边界。添加 `--merge-system-messages` 才将全部 system 文本拼接到顶部，恢复原来的合并行为。`--filter-system-messages` 独立控制过滤：先只保留第一条内联 system 消息，再按合并选项处理，不影响顶层 system。两种模式都会过滤计费标头文本，所有 system 消息均为 `trainable: false`。不合并时，后续新增的内联 system 可以正常延续轨迹；合并时保留原有的合并 system 文本变化分段行为。要渲染最后一次请求的 prompt，使用 `messages.slice(0, -1)`、`tools` 和 `add_generation_prompt=true`；最后一条 assistant 响应仍保留在 SFT 轨迹中。
-
-只有成功的 `POST /v1/messages` 请求会成为训练目标。压缩等历史变化会新建轨迹；若轨迹因历史断裂而结束，末尾工具调用可能没有后续工具结果。导出仅使用 HTTP trace，不读取 Claude session 文件，也不生成 token 级 loss mask。
-
-校验和导出不会启动 Claude，也不能与其他功能模式或 `--run-with` 组合使用。导出专用参数必须搭配 `--export-openai`；采集模式中 `--run-with` 后的参数仍原样传给客户端。原独立命令 `claude-trace-validate`、`claude-trace-export-openai` 及对应离线启动脚本已移除，不提供兼容别名；采用新版包前需迁移调用。
-
-## 环境要求
-
-- Node.js 16+（Codex OAuth 请求体完整日志展示建议 Node.js 22+）
-- **Claude Code** CLI（V1 Node.js 或 V2+ 原生二进制），用于 `claude-trace`
-- **OpenCode** CLI，用于 `opencode-trace`
-- **Codex CLI**，用于 `codex-trace`
-
-## 开发
-
-```bash
-npm run setup    # 首次安装
-npm run dev      # watch 模式；预览 http://localhost:8080/test
-npm run build
-npm run typecheck
-npm run test:unit
-```
-
-### 架构
-
-**后端**（`src/`）：
-
-- **CLI**（`cli/cli.ts`、`cli/opencode-cli.ts`、`cli/codex-cli.ts`、`cli/cli-common.ts`）— 薄入口与共用参数解析
-- **Trace Runner**（`cli/trace-runner.ts`）— 通用启动与代理/拦截器分发
-- **Tool Profiles**（`tools/claude.ts`、`tools/opencode.ts`、`tools/codex.ts`、`tools/binary-utils.ts`）— 各工具配置、二进制检测、上游解析
-- **Config Overlays**（`config/claude-config-overlay.ts`、`config/codex-config-overlay.ts`）— 持久化代理覆盖层，不修改用户原始配置
-- **Reverse Proxy**（`intercept/reverse-proxy.ts`）— 原生二进制拦截，实时 HTML 生成
-- **Interceptor**（`intercept/interceptor.ts`）+ **Loader**（`intercept/interceptor-loader.js`、`intercept/token-extractor.js`）— Claude Code V1
-- **Routing**（`routing/proxy-routing.ts`、`routing/codex-routing.ts`）— OpenCode 模型路由与 Codex 路径/auth 上游选择
-- **API Format**（`adapt/api-format.ts`）— 格式检测与展示标签
-- **OpenAI Adapter**（`adapt/openai-adapter.ts`）— OpenAI 请求/响应适配为 Anthropic `Message`，供查看器展示
-- **Report**（`report/html-generator.ts`、`report/index-generator.ts`、`report/shared-conversation-processor.ts`）— HTML 生成与会话解析
-
-**前端**（`frontend/src/`）：Lit + Tailwind 交互查看器，嵌入 HTML 报告。
-
-## 文档
-
-维护者与贡献者文档位于 [`doc/`](doc/)：
-
-| 文档 | 说明 |
-|------|------|
-| [doc/publishing/oidc.md](doc/publishing/oidc.md) | 推荐的 GitHub Actions OIDC npm 发布流程 |
-| [doc/github-actions-workflow-guide.md](doc/github-actions-workflow-guide.md) | GitHub Actions 工作流详解与示例 |
-| [doc/npm-v12-security-changelog.md](doc/npm-v12-security-changelog.md) | npm v12 安装安全策略与 GAT 弃用说明 |
-
-## 许可证
-
-MIT — 当前维护于 [FlyingFish-233/claude-trace](https://github.com/FlyingFish-233/claude-trace)，fork 自 [hanqunfeng/claude-trace](https://github.com/hanqunfeng/claude-trace)，而后者 fork 自 [badlogic/lemmy 中的 claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace)。
+Built/offline acceptance: `npm run test:built` (after build; local temporary npm tarball only).

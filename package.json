@@ -1,30 +1,31 @@
 {
 	"name": "@uvl000/claude-trace",
-	"version": "4.2.0",
+	"version": "5.0.0",
 	"description": "WorkflowExp fork for recording API traffic from Claude Code, OpenCode, and Codex CLI",
 	"main": "dist/index.js",
 	"bin": {
 		"claude-trace": "dist/cli/cli.js",
 		"opencode-trace": "dist/cli/opencode-cli.js",
 		"codex-trace": "dist/cli/codex-cli.js",
-		"vibe-coding-proxy": "dist/cli/vibe-coding-proxy-cli.js"
+		"vibe-coding-proxy": "dist/cli/vibe-coding-proxy-cli.js",
+		"llm-trace": "dist/cli/llm-trace.js"
 	},
 	"scripts": {
-		"build": "tsc && mkdir -p dist/intercept && cp src/intercept/interceptor-loader.js src/intercept/token-extractor.js dist/intercept/ && npm run build:frontend",
+		"build": "rm -rf dist && tsc && npm run build:frontend",
 		"build:frontend": "cd frontend && npm run build",
 		"setup": "npm install && cd frontend && npm install",
-		"predev": "tsc && mkdir -p dist/intercept && cp src/intercept/interceptor-loader.js src/intercept/token-extractor.js dist/intercept/",
-		"dev": "concurrently \"npm run dev:core\" \"npm run dev:copy\" \"npm run dev:frontend\"",
+		"predev": "tsc",
+		"dev": "concurrently \"npm run dev:core\" \"npm run dev:frontend\"",
 		"dev:core": "tsc --watch --preserveWatchOutput",
-		"dev:copy": "npx nodemon --watch src/intercept/interceptor-loader.js --watch src/intercept/token-extractor.js --exec 'mkdir -p dist/intercept && cp src/intercept/interceptor-loader.js src/intercept/token-extractor.js dist/intercept/'",
 		"dev:frontend": "cd frontend && npm run dev",
 		"clean": "rm -rf dist",
 		"prepublishOnly": "npm run clean && npm run build",
-		"test": "node --require ./dist/intercept/interceptor.js echo 'test'",
+		"test": "npm run test:unit",
 		"test:unit": "npx tsx --test test/*.test.ts",
-		"test:generate": "npx tsx src/cli/cli.ts test/test-traffic.jsonl test/index.html",
+		"test:generate": "node dist/cli/llm-trace.js --help",
 		"typecheck": "tsc --noEmit",
-		"pack:workflowexp": "bash scripts/pack-workflowexp.sh releases"
+		"pack:workflowexp": "bash scripts/pack-workflowexp.sh releases",
+		"test:built": "node scripts/verify-built.cjs"
 	},
 	"files": [
 		"dist/**/*",
@@ -32,7 +33,8 @@
 		"frontend/template.html",
 		"offline/bin/**/*",
 		"README.md",
-		"README.zh-CN.md"
+		"README.zh-CN.md",
+		"MIGRATION.md"
 	],
 	"keywords": [
 		"claude",
@@ -52,7 +54,7 @@
 		"url": "git+https://github.com/FlyingFish-233/claude-trace.git"
 	},
 	"engines": {
-		"node": ">=16.0.0"
+		"node": ">=20"
 	},
 	"devDependencies": {
 		"@anthropic-ai/sdk": "^0.52.0",

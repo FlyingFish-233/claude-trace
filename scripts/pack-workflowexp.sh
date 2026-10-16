@@ -24,10 +24,12 @@ npm --prefix frontend ci --ignore-scripts
 npm run typecheck
 npm run test:unit
 npm run build
-node dist/cli/cli.js --help >/dev/null
+for entry in llm-trace cli codex-cli opencode-cli vibe-coding-proxy-cli; do
+  node "dist/cli/$entry.js" --help >/dev/null
+done
 npm pack --ignore-scripts --json --pack-destination "$output_dir" >"$pack_result"
 
-filename="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))[0].filename" "$pack_result")"
+filename="$(node -p "Object.values(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')))[0].filename" "$pack_result")"
 package_tgz="$output_dir/$filename"
 sha256sum "$package_tgz" >"$package_tgz.sha256"
 
@@ -35,7 +37,7 @@ PACK_RESULT="$pack_result" PACKAGE_TGZ="$package_tgz" GIT_COMMIT="$(git rev-pars
   node -e '
     const crypto = require("crypto");
     const fs = require("fs");
-    const pack = JSON.parse(fs.readFileSync(process.env.PACK_RESULT, "utf8"))[0];
+    const pack = Object.values(JSON.parse(fs.readFileSync(process.env.PACK_RESULT, "utf8")))[0];
     const bytes = fs.readFileSync(process.env.PACKAGE_TGZ);
     const metadata = {
       schema_version: 1,

@@ -175,8 +175,8 @@ export class SharedConversationProcessor {
 
             try {
                 const apiFormat = resolvePairApiFormat(pair);
-                const isOpenAIFormat = apiFormat === "openai" || apiFormat === "openai-responses";
-                const isStreaming = !!pair.response.body_raw;
+                const isOpenAIFormat = apiFormat === "openai-chat-completions" || apiFormat === "openai-responses";
+                const isStreaming = !pair.response.body && !!pair.response.body_raw;
                 let response: Message;
                 let streamFormat: "standard" | "bedrock" | null = null;
                 let request: MessageCreateParams;
@@ -184,7 +184,7 @@ export class SharedConversationProcessor {
                 if (isOpenAIFormat) {
                     request = normalizeOpenAIRequest(pair.request.body, apiFormat);
                     response = parseOpenAIResponse(pair.response, apiFormat, extractModelFromPair(pair));
-                } else if (pair.response.body_raw) {
+                } else if (!pair.response.body && pair.response.body_raw) {
                     streamFormat = this.isBedrockResponse(pair.response.body_raw) ? "bedrock" : "standard";
                     response = this.parseStreamingResponse(pair.response.body_raw);
                     request = pair.request.body as MessageCreateParams;
@@ -199,7 +199,7 @@ export class SharedConversationProcessor {
 
                 processedPairs.push({
                     id: `${pair.request.timestamp || Date.now()}_${Math.random()}`,
-                    timestamp: new Date((pair.request.timestamp || Date.now()) * 1000).toISOString(),
+                    timestamp: new Date(pair.request.timestamp || Date.now()).toISOString(),
                     request,
                     response,
                     model,

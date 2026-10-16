@@ -4,8 +4,8 @@
  * Unit tests for human-readable API format labels used in trace reports and
  * the HTML conversation viewer.
  *
- * Raw traffic logs store internal `apiFormat` enum values (e.g. `"openai"`,
- * `"anthropic"`, `"openai-responses"`). The HTML generator and index metadata
+ * Raw traffic logs store internal `apiFormat` enum values (e.g. `"openai-chat-completions"`,
+ * `"anthropic-messages"`, `"openai-responses"`). The HTML generator and index metadata
  * use `formatApiFormatLabel` and `formatApiFormatsDisplay` (from `api-format.ts`)
  * to render user-facing strings such as "OpenAI Chat" or "Mixed (OpenAI Chat +
  * Anthropic Messages)" when a conversation spans multiple provider formats.
@@ -29,8 +29,8 @@ describe("formatApiFormatLabel", () => {
 	 * suitable for display in the HTML viewer.
 	 */
 	it("maps known formats", () => {
-		assert.equal(formatApiFormatLabel("openai"), "OpenAI Chat");
-		assert.equal(formatApiFormatLabel("anthropic"), "Anthropic Messages");
+		assert.equal(formatApiFormatLabel("openai-chat-completions"), "OpenAI Chat");
+		assert.equal(formatApiFormatLabel("anthropic-messages"), "Anthropic Messages");
 	});
 });
 
@@ -46,7 +46,7 @@ describe("formatApiFormatsDisplay", () => {
 	 * equal that format's individual label (no "Mixed" prefix).
 	 */
 	it("returns single format label", () => {
-		assert.equal(formatApiFormatsDisplay(["openai"]), "OpenAI Chat");
+		assert.equal(formatApiFormatsDisplay(["openai-chat-completions"]), "OpenAI Chat");
 	});
 
 	/**
@@ -55,7 +55,7 @@ describe("formatApiFormatsDisplay", () => {
 	 */
 	it("returns mixed label for multiple formats", () => {
 		assert.equal(
-			formatApiFormatsDisplay(["openai", "anthropic"]),
+			formatApiFormatsDisplay(["openai-chat-completions", "anthropic-messages"]),
 			"Mixed (OpenAI Chat + Anthropic Messages)",
 		);
 	});

@@ -424,9 +424,6 @@ export const opencodeProfile: ToolProfile = {
 	},
 
 	/** OpenCode has no Node.js fetch hook; proxy mode only. */
-	supportsNodeInterceptor(): boolean {
-		return false;
-	},
 };
 
 /** Re-exported for tests and `trace-runner.ts` binary detection. */

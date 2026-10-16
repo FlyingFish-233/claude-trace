@@ -31,12 +31,12 @@ import { resolveModelRoute } from "../src/routing/proxy-routing";
 describe("inferApiFormat", () => {
 	/** `@ai-sdk/anthropic` providers use the Anthropic Messages API format. */
 	it("detects anthropic npm package", () => {
-		assert.equal(inferApiFormat("@ai-sdk/anthropic"), "anthropic");
+		assert.equal(inferApiFormat("@ai-sdk/anthropic"), "anthropic-messages");
 	});
 
 	/** `@ai-sdk/openai-compatible` providers use OpenAI Chat Completions format. */
 	it("detects openai-compatible npm package", () => {
-		assert.equal(inferApiFormat("@ai-sdk/openai-compatible"), "openai");
+		assert.equal(inferApiFormat("@ai-sdk/openai-compatible"), "openai-chat-completions");
 	});
 
 	/** `@ai-sdk/openai` providers use the OpenAI Responses API format. */
@@ -69,7 +69,7 @@ describe("buildModelRouteMap", () => {
 			},
 		});
 
-		assert.equal(map["deepseek-chat"]?.apiFormat, "openai");
+		assert.equal(map["deepseek-chat"]?.apiFormat, "openai-chat-completions");
 		assert.equal(map["deepseek/deepseek-chat"]?.providerId, "deepseek");
 		assert.equal(map["deepseek/*"]?.isProviderFallback, true);
 	});
@@ -92,7 +92,7 @@ describe("buildModelRouteMap", () => {
 			},
 		});
 
-		assert.equal(map["chat-model"]?.apiFormat, "openai");
+		assert.equal(map["chat-model"]?.apiFormat, "openai-chat-completions");
 		assert.equal(map["responses-model"]?.apiFormat, "openai-responses");
 	});
 
@@ -110,7 +110,7 @@ describe("buildModelRouteMap", () => {
 			},
 		});
 
-		assert.equal(map["openai/*"]?.apiFormat, "openai");
+		assert.equal(map["openai/*"]?.apiFormat, "openai-chat-completions");
 		assert.equal(map["openai/*"]?.upstreamBaseUrl, "https://api.custom.com/v1");
 	});
 });
@@ -142,7 +142,7 @@ describe("resolveModelRoute", () => {
 	it("matches provider/model exact key", () => {
 		const route = resolveModelRoute("apiyi/gpt-4.1", modelRoutes);
 		assert.equal(route?.providerId, "apiyi");
-		assert.equal(route?.apiFormat, "openai");
+		assert.equal(route?.apiFormat, "openai-chat-completions");
 	});
 
 	/**

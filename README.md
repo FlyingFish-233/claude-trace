@@ -1,5 +1,7 @@
 # claude-trace 5
 
+Documentation (中文): [npm publishing](doc/npm-publishing.md) · [Architecture](doc/architecture.md) · [CLI usage](doc/usage.md) · [vLLM/Qwen training export](doc/vllm-qwen-export.md).
+
 Capture and inspect LLM HTTP traffic independently of the client. Three protocol adapters support `anthropic-messages`, `openai-responses`, and `openai-chat-completions`. Claude Code, Codex and OpenCode have capture launchers; other clients can set their base URL manually.
 
 Requires Node.js 20+. Build from source with `npm install`, `npm --prefix frontend install`, and `npm run build`. Run `node dist/cli/llm-trace.js --help`, or use the npm bin entry points after installing this package. No client is needed for offline commands.

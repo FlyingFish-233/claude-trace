@@ -1,5 +1,7 @@
 # claude-trace 5
 
+项目文档：[npm 发布](doc/npm-publishing.md) · [项目架构](doc/architecture.md) · [命令使用](doc/usage.md) · [vLLM/Qwen 训练轨迹导出](doc/vllm-qwen-export.md)。
+
 按协议统一采集、导出、校验、报告和重放 LLM HTTP 请求。支持 `anthropic-messages`、`openai-responses`、`openai-chat-completions`。Claude Code、Codex、OpenCode 保留客户端启动器，其余客户端手动设置 base URL 即可接入。
 
 需要 Node.js 20+。源码构建：`npm install`、`npm --prefix frontend install`、`npm run build`。可直接运行 `node dist/cli/llm-trace.js --help`；安装本包后可使用 npm bin 命令。离线操作不需要安装任何客户端。

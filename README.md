@@ -57,7 +57,7 @@ Anthropic `system` and Responses `instructions` first become leading system mess
 
 ### Validate and report
 
-Validation writes an independent JSON report distinguishing capture completeness, protocol validity, HTTP success and model completion. A fully captured 401/429 can be a valid complete capture but is not a training target. Length-limited results are separate from malformed protocol data. Tool history is checked without requiring a result for the final newly generated tool call. `--outcome incomplete` cannot be upgraded. Exit codes: 0 valid/complete; 1 invalid/incomplete; 2 CLI usage error. HTML is generated offline and includes raw records and outcome diagnostics.
+Validation writes an independent JSON report distinguishing capture completeness, protocol validity, HTTP success and model completion. By default, non-POST auxiliary traffic and aborted attempts remain in `entries` with `excluded: true` but do not fail the overall result; at least one model request must remain, and duplicate IDs, unredacted headers, invalid timing and incomplete run outcomes still fail. Use `--strict` to require every recorded request to pass, including auxiliary and aborted attempts. A fully captured 401/429 can be a valid complete capture but is not a training target. Length-limited results are separate from malformed protocol data. Tool history is checked without requiring a result for the final newly generated tool call. `--outcome incomplete` cannot be upgraded. Exit codes: 0 valid/complete; 1 invalid/incomplete; 2 CLI usage error. HTML is generated offline and includes raw records and outcome diagnostics.
 
 ### Replay
 

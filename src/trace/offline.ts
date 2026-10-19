@@ -59,8 +59,16 @@ function validateTokenCount(record: TraceRecord): ValidationResult {
     model_complete: false, errors: [], warnings: ["auxiliary_request"] };
 }
 
-/** Validate capture, wire semantics and model outcomes without modifying inputs. */
-export function validateTraces(inputs: string[], output: string, outcome: "complete" | "incomplete" = "complete"): Json {
+/** Treat non-model HTTP requests as diagnostics, not failed model exchanges. */
+function validateAuxiliary(record: TraceRecord): ValidationResult {
+  const explicitConnectionError = record.status === "error" && !record.response && !!record.error && record.error.code !== "route_error";
+  return { capture_complete: (record.status === "complete" && !!record.response) || explicitConnectionError,
+    protocol_valid: true, http_success: !!record.response && record.response.status_code >= 200 && record.response.status_code < 300,
+    model_complete: false, errors: [], warnings: ["auxiliary_request"] };
+}
+
+/** Validate capture and wire semantics; default acceptance ignores auxiliary and interrupted attempts. */
+export function validateTraces(inputs: string[], output: string, outcome: "complete" | "incomplete" = "complete", strict = false): Json {
   assertNewOutput(output);
   const entries: Json[] = [];
   const errors: string[] = [];
@@ -68,21 +76,29 @@ export function validateTraces(inputs: string[], output: string, outcome: "compl
   try { records = readRecords(inputs); } catch (error) { errors.push((error as Error).message); }
   if (!records.length) errors.push("no_records");
   const seen = new Set<string>();
+  let integrityValid = true;
   for (const { record, file, line } of records) {
     const adapter = record.protocol === "unknown" ? undefined : adapters[record.protocol];
-    const checked = isAnthropicTokenCount(record) ? validateTokenCount(record) : adapter?.validate(record) || { capture_complete: record.status === "complete", protocol_valid: false, http_success: false, model_complete: false, errors: ["unknown_protocol"], warnings: [] };
+    const auxiliary = !strict && record.request.method.toUpperCase() !== "POST";
+    const interrupted = !strict && record.status === "aborted";
+    const checked = isAnthropicTokenCount(record) ? validateTokenCount(record) : auxiliary ? validateAuxiliary(record) : adapter?.validate(record) || { capture_complete: record.status === "complete", protocol_valid: false, http_success: false, model_complete: false, errors: ["unknown_protocol"], warnings: [] };
+    if (interrupted) checked.warnings.push("interrupted_attempt");
+    const integrityErrors: string[] = [];
     const id = `${record.run_id}/${record.request_id}`;
-    if (seen.has(id)) checked.errors.push("duplicate_request_id");
+    if (seen.has(id)) integrityErrors.push("duplicate_request_id");
     seen.add(id);
     for (const side of [record.request, record.response]) for (const [name, value] of Object.entries(side?.headers || {})) {
-      if (SENSITIVE_HEADER_PARTS.some(part => name.toLowerCase().includes(part)) && value !== "[REDACTED]") checked.errors.push(`unredacted_header:${name}`);
+      if (SENSITIVE_HEADER_PARTS.some(part => name.toLowerCase().includes(part)) && value !== "[REDACTED]") integrityErrors.push(`unredacted_header:${name}`);
     }
-    if (!["complete", "error", "aborted"].includes(record.status)) checked.errors.push("invalid_capture_status");
-    if (record.status !== "complete" && !record.error) checked.errors.push("missing_transport_error");
+    if (!["complete", "error", "aborted"].includes(record.status)) integrityErrors.push("invalid_capture_status");
+    if (record.status !== "complete" && !record.error) integrityErrors.push("missing_transport_error");
     const times = [record.timing.start_ms, record.timing.headers_ms, record.timing.first_chunk_ms, record.timing.end_ms].filter(t => t !== null) as number[];
-    if (times.some((t, i) => !Number.isFinite(t) || (i > 0 && t < times[i - 1]))) checked.errors.push("invalid_timing");
+    if (times.some((t, i) => !Number.isFinite(t) || (i > 0 && t < times[i - 1]))) integrityErrors.push("invalid_timing");
+    if (integrityErrors.length) integrityValid = false;
+    checked.errors.push(...integrityErrors);
     if (checked.errors.length) checked.protocol_valid = false;
-    entries.push({ file, line, request_id: record.request_id, protocol: record.protocol, ...checked });
+    entries.push({ file, line, request_id: record.request_id, protocol: record.protocol, ...checked,
+      excluded: auxiliary || interrupted });
   }
   let manifestsComplete = true;
   try {
@@ -91,8 +107,10 @@ export function validateTraces(inputs: string[], output: string, outcome: "compl
       if (fs.existsSync(manifestPath) && JSON.parse(fs.readFileSync(manifestPath, "utf8")).outcome !== "complete") manifestsComplete = false;
     }
   } catch { manifestsComplete = false; }
-  const report = { schema_version: 2, capture_complete: outcome === "complete" && manifestsComplete && !errors.length && entries.every(e => e.capture_complete),
-    protocol_valid: !errors.length && entries.every(e => e.protocol_valid), errors,
+  const modelEntries = entries.filter(e => !e.excluded);
+  if (!strict && !modelEntries.length) errors.push("no_model_requests");
+  const report = { schema_version: 2, capture_complete: outcome === "complete" && manifestsComplete && integrityValid && !errors.length && modelEntries.every(e => e.capture_complete),
+    protocol_valid: integrityValid && !errors.length && modelEntries.every(e => e.protocol_valid), errors,
     counts: { requests: entries.length, http_success: entries.filter(e => e.http_success).length, model_complete: entries.filter(e => e.model_complete).length }, entries };
   writeJson(output, report); return report;
 }

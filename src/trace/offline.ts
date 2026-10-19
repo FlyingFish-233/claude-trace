@@ -12,6 +12,15 @@ function key(value: any): string {
   return JSON.stringify(stable(value));
 }
 
+/** Compare histories without treating trailing horizontal whitespace as a fork. */
+function historyKey(value: any): string {
+  function stable(v: any): any {
+    if (typeof v === "string") return v.replace(/[ \t]+(?=\r?$)/gm, "");
+    return Array.isArray(v) ? v.map(stable) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, stable(v[k])])) : v;
+  }
+  return JSON.stringify(stable(value));
+}
+
 /** One shared policy sequence: developer conversion, first-system filter, then merge. */
 export function transformMessages(messages: Json[], options: ExportOptions): Json[] {
   if (options.mergeSystemSeparator !== undefined) {
@@ -103,7 +112,7 @@ export function exportTraces(inputs: string[], output: string, options: ExportOp
       const markers = new Set(turn.history.map(m => String(m.content)).filter(t => /^<summary\b[\s\S]*<\/summary>$/i.test(t.trim()) || /<conversation_summary>|conversation (?:has been|was) compacted|summary of the conversation so far|this session is being continued from a previous conversation/i.test(t)));
       const siblings = chains.filter(c => c.partition === partition);
       const newCompaction = [...markers].some(marker => !siblings.some(c => c.markers.has(marker)));
-      const candidates = siblings.filter(c => c.model === model && c.toolsKey === toolsKey && c.history.length <= turn.history.length && c.history.every((m, i) => key(m) === key(turn.history[i])));
+      const candidates = siblings.filter(c => c.model === model && c.toolsKey === toolsKey && c.history.length <= turn.history.length && c.history.every((m, i) => historyKey(m) === historyKey(turn.history[i])));
       const longest = Math.max(-1, ...candidates.map(c => c.history.length));
       const best = candidates.filter(c => c.history.length === longest);
       let chain = !newCompaction && best.length === 1 ? best[0] : undefined;

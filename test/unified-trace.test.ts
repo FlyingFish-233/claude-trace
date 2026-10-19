@@ -181,6 +181,21 @@ test("Chat tool closure joins turns using raw history; forks, sessions, runs and
   assert.ok(result.requests.some((r:Json)=>r.reason==="tools_changed"));assert.ok(result.requests.some((r:Json)=>r.reason==="divergent_history"));
 });
 
+test("history association ignores trailing whitespace drift in tool arguments",t=>{
+  const root=workspace(t),writer=new TraceWriter(path.join(root,"capture"));
+  const request={model:"test-model",max_tokens:64,messages:[{role:"user",content:"hi"}]};
+  const inputWithTrailingWhitespace={file_path:"/tmp/solution.py",content:"line 1\n        \nline 2\n    \n"};
+  const inputWithoutTrailingWhitespace={file_path:"/tmp/solution.py",content:"line 1\n\nline 2\n\n"};
+  const firstResponse={type:"message",role:"assistant",content:[{type:"tool_use",id:"call",name:"Write",input:inputWithTrailingWhitespace}],stop_reason:"tool_use",usage:{input_tokens:1,output_tokens:1}};
+  write(writer,"anthropic-messages",request,firstResponse);
+  const continuedRequest={...request,messages:[...request.messages,{role:"assistant",content:[{type:"tool_use",id:"call",name:"Write",input:inputWithoutTrailingWhitespace}]},{role:"user",content:[{type:"tool_result",tool_use_id:"call",content:"ok"}]}]};
+  const finalResponse={type:"message",role:"assistant",content:[{type:"text",text:"done"}],stop_reason:"end_turn",usage:{input_tokens:2,output_tokens:1}};
+  write(writer,"anthropic-messages",continuedRequest,finalResponse);writer.stop();
+  const result=exportTraces([writer.file],path.join(root,"train.jsonl"));
+  assert.equal(result.counts.trajectories,1);
+  assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued"]);
+});
+
 test("Responses empty terminal envelope reconstructs full reasoning, not summary",t=>{
   const root=workspace(t),w=new TraceWriter(root),f=fixture("openai-responses");const record=write(w,"openai-responses",f.request,f.response);w.stop();
   delete record.response!.body;

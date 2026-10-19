@@ -11,6 +11,12 @@ import { Protocol } from "../protocols/types";
 import { TraceWriter, decode } from "../trace/store";
 import { CaptureTransport } from "./transport";
 interface ParsedTarget { protocol: string; targetHost: string; targetPort: number; pathPrefix: string }
+/** Claude Code performs this connectivity probe before its first model request. */
+function isClaudeHealthcheck(req: http.IncomingMessage): boolean {
+  if (req.method !== "HEAD") return false;
+  const pathname = new URL(req.url || "/", "http://127.0.0.1").pathname;
+  return pathname === "/api/hello" || pathname.endsWith("/api/hello");
+}
 /** Join an API prefix without duplicating a prefix already sent by a client. */
 function joinApiPath(prefix: string, incoming: string): string {
   if (prefix && (incoming === prefix || incoming.startsWith(prefix + "/") || incoming.startsWith(prefix + "?"))) return incoming;
@@ -230,7 +236,7 @@ export class ReverseProxyServer {
         (config.providerRoutes?.some(r => r.matchPathPrefixes?.length) ? resolveCodexRouteTarget(req.url,config.providerRoutes,fallback) : resolveRouteTarget(req.url,config.routes,fallback));
       const url = `${route.protocol}//${route.targetHost}:${route.targetPort}${route.upstreamDisplayPath}`;
       return { url, agent: createOutboundAgent(url) };
-    }, config.apiFormat));
+    }, config.apiFormat, !isClaudeHealthcheck(req)));
   }
   /** Bind loopback on an ephemeral port by default. */
   async start(): Promise<{port:number;url:string}> {

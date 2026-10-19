@@ -1,6 +1,6 @@
 {
 	"name": "@uvl000/claude-trace",
-	"version": "5.0.1",
+	"version": "5.0.2",
 	"description": "WorkflowExp fork for recording API traffic from Claude Code, OpenCode, and Codex CLI",
 	"main": "dist/index.js",
 	"bin": {

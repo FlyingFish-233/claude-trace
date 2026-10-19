@@ -228,6 +228,28 @@ test("forward proxy uses raw schema-v2 capture and preserves unknown protocols",
   proxy.stop();const [{record}]=readRecords([root]);assert.equal(record.protocol,"unknown");assert.deepEqual(record.response!.body,{custom:true});assert.equal(validateTraces([root],path.join(root,"validation.json")).protocol_valid,false);
 });
 
+test("Anthropic token counting is valid auxiliary traffic and is not exported as a model turn",t=>{
+  const root=workspace(t),writer=new TraceWriter(path.join(root,"capture")),f=fixture("anthropic-messages");
+  write(writer,"anthropic-messages",f.request,f.response);
+  const now=Date.now();
+  const tokenCount=writer.write({method:"POST",url:"http://mock/prefix/v1/messages/count_tokens",requestHeaders:{authorization:"secret"},
+    requestBody:Buffer.from(JSON.stringify({model:"test-model",messages:f.request.messages})),responseHeaders:{"content-type":"application/json"},
+    statusCode:200,responseChunks:[Buffer.from('{"input_tokens":42}')],requestTimestamp:now,responseTimestamp:now,firstChunkTimestamp:now});
+  writer.stop();assert.equal(tokenCount.protocol,"unknown");
+  const validation=validateTraces([writer.directory],path.join(root,"validation.json"));
+  assert.equal(validation.capture_complete,true);assert.equal(validation.protocol_valid,true);
+  assert.deepEqual(validation.counts,{requests:2,http_success:2,model_complete:1});
+  assert.equal(validation.entries[1].protocol_valid,true);assert.equal(validation.entries[1].model_complete,false);
+  assert.deepEqual(validation.entries[1].warnings,["auxiliary_request"]);
+  const exported=exportTraces([writer.directory],path.join(root,"training.jsonl"));
+  assert.deepEqual(exported.counts,{trajectories:1,assigned:1,skipped:1});
+  const records=fs.readFileSync(writer.file,"utf8").trimEnd().split("\n").map(line=>JSON.parse(line));
+  records[1].request.headers.authorization="secret";
+  fs.writeFileSync(writer.file,records.map(record=>JSON.stringify(record)).join("\n")+"\n");
+  const invalid=validateTraces([writer.directory],path.join(root,"invalid-validation.json"));
+  assert.equal(invalid.protocol_valid,false);assert.ok(invalid.entries[1].errors.includes("unredacted_header:authorization"));
+});
+
 test("replay stream controls, state refusal, deterministic sampling and concurrency",async t=>{
   const root=workspace(t),w=new TraceWriter(path.join(root,"source"));const f=fixture("openai-responses");
   for(let i=0;i<4;i++)write(w,"openai-responses",{...f.request,model:`m${i}`},f.response);w.stop();

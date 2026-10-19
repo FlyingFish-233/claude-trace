@@ -1,7 +1,7 @@
 /** @file offline.ts @description Protocol-neutral validation, trajectory association and export policy. */
 import * as fs from "fs";
 import { adapters } from "../protocols/registry";
-import { ExportOptions, Json, TraceRecord } from "../protocols/types";
+import { ExportOptions, Json, TraceRecord, ValidationResult } from "../protocols/types";
 import { readRecords, inputFiles, assertNewOutput, writeJson } from "./store";
 import { SENSITIVE_HEADER_PARTS } from "../intercept/header-redaction";
 import * as path from "path";
@@ -45,6 +45,20 @@ export function transformMessages(messages: Json[], options: ExportOptions): Jso
   return output;
 }
 
+/** Token counting is an Anthropic auxiliary call, not a model response. */
+function isAnthropicTokenCount(record: TraceRecord): boolean {
+  if (record.request.method.toUpperCase() !== "POST") return false;
+  try { return new URL(record.request.url).pathname.replace(/\/+$/, "").endsWith("/v1/messages/count_tokens"); }
+  catch { return false; }
+}
+
+function validateTokenCount(record: TraceRecord): ValidationResult {
+  const explicitConnectionError = record.status === "error" && !record.response && !!record.error && record.error.code !== "route_error";
+  return { capture_complete: (record.status === "complete" && !!record.response) || explicitConnectionError,
+    protocol_valid: true, http_success: !!record.response && record.response.status_code >= 200 && record.response.status_code < 300,
+    model_complete: false, errors: [], warnings: ["auxiliary_request"] };
+}
+
 /** Validate capture, wire semantics and model outcomes without modifying inputs. */
 export function validateTraces(inputs: string[], output: string, outcome: "complete" | "incomplete" = "complete"): Json {
   assertNewOutput(output);
@@ -56,7 +70,7 @@ export function validateTraces(inputs: string[], output: string, outcome: "compl
   const seen = new Set<string>();
   for (const { record, file, line } of records) {
     const adapter = record.protocol === "unknown" ? undefined : adapters[record.protocol];
-    const checked = adapter?.validate(record) || { capture_complete: record.status === "complete", protocol_valid: false, http_success: false, model_complete: false, errors: ["unknown_protocol"], warnings: [] };
+    const checked = isAnthropicTokenCount(record) ? validateTokenCount(record) : adapter?.validate(record) || { capture_complete: record.status === "complete", protocol_valid: false, http_success: false, model_complete: false, errors: ["unknown_protocol"], warnings: [] };
     const id = `${record.run_id}/${record.request_id}`;
     if (seen.has(id)) checked.errors.push("duplicate_request_id");
     seen.add(id);

@@ -52,13 +52,6 @@ function isAnthropicTokenCount(record: TraceRecord): boolean {
   catch { return false; }
 }
 
-function validateTokenCount(record: TraceRecord): ValidationResult {
-  const explicitConnectionError = record.status === "error" && !record.response && !!record.error && record.error.code !== "route_error";
-  return { capture_complete: (record.status === "complete" && !!record.response) || explicitConnectionError,
-    protocol_valid: true, http_success: !!record.response && record.response.status_code >= 200 && record.response.status_code < 300,
-    model_complete: false, errors: [], warnings: ["auxiliary_request"] };
-}
-
 /** Treat non-model HTTP requests as diagnostics, not failed model exchanges. */
 function validateAuxiliary(record: TraceRecord): ValidationResult {
   const explicitConnectionError = record.status === "error" && !record.response && !!record.error && record.error.code !== "route_error";
@@ -67,13 +60,10 @@ function validateAuxiliary(record: TraceRecord): ValidationResult {
     model_complete: false, errors: [], warnings: ["auxiliary_request"] };
 }
 
-/** Validate capture and wire semantics; default acceptance ignores auxiliary and interrupted attempts. */
-export function validateTraces(inputs: string[], output: string, outcome: "complete" | "incomplete" = "complete", strict = false): Json {
-  assertNewOutput(output);
+/** Analyze located records for both JSON validation and the HTML report. */
+export function validateRecords(inputs: string[], records: ReturnType<typeof readRecords>, outcome: "complete" | "incomplete" = "complete", strict = false, readError?: string): Json {
   const entries: Json[] = [];
-  const errors: string[] = [];
-  let records: ReturnType<typeof readRecords> = [];
-  try { records = readRecords(inputs); } catch (error) { errors.push((error as Error).message); }
+  const errors: string[] = readError !== undefined ? [readError] : [];
   if (!records.length) errors.push("no_records");
   const seen = new Set<string>();
   let integrityValid = true;
@@ -81,7 +71,7 @@ export function validateTraces(inputs: string[], output: string, outcome: "compl
     const adapter = record.protocol === "unknown" ? undefined : adapters[record.protocol];
     const auxiliary = !strict && record.request.method.toUpperCase() !== "POST";
     const interrupted = !strict && record.status === "aborted";
-    const checked = isAnthropicTokenCount(record) ? validateTokenCount(record) : auxiliary ? validateAuxiliary(record) : adapter?.validate(record) || { capture_complete: record.status === "complete", protocol_valid: false, http_success: false, model_complete: false, errors: ["unknown_protocol"], warnings: [] };
+    const checked = isAnthropicTokenCount(record) || auxiliary ? validateAuxiliary(record) : adapter?.validate(record) || { capture_complete: record.status === "complete", protocol_valid: false, http_success: false, model_complete: false, errors: ["unknown_protocol"], warnings: [] };
     if (interrupted) checked.warnings.push("interrupted_attempt");
     const integrityErrors: string[] = [];
     const id = `${record.run_id}/${record.request_id}`;
@@ -109,9 +99,18 @@ export function validateTraces(inputs: string[], output: string, outcome: "compl
   } catch { manifestsComplete = false; }
   const modelEntries = entries.filter(e => !e.excluded);
   if (!strict && !modelEntries.length) errors.push("no_model_requests");
-  const report = { schema_version: 2, capture_complete: outcome === "complete" && manifestsComplete && integrityValid && !errors.length && modelEntries.every(e => e.capture_complete),
+  return { schema_version: 2, capture_complete: outcome === "complete" && manifestsComplete && integrityValid && !errors.length && modelEntries.every(e => e.capture_complete),
     protocol_valid: integrityValid && !errors.length && modelEntries.every(e => e.protocol_valid), errors,
     counts: { requests: entries.length, http_success: entries.filter(e => e.http_success).length, model_complete: entries.filter(e => e.model_complete).length }, entries };
+}
+
+/** Validate capture and wire semantics; default acceptance ignores auxiliary and interrupted attempts. */
+export function validateTraces(inputs: string[], output: string, outcome: "complete" | "incomplete" = "complete", strict = false): Json {
+  assertNewOutput(output);
+  let records: ReturnType<typeof readRecords> = [];
+  let readError: string | undefined;
+  try { records = readRecords(inputs); } catch (error) { readError = (error as Error).message; }
+  const report = validateRecords(inputs, records, outcome, strict, readError);
   writeJson(output, report); return report;
 }
 

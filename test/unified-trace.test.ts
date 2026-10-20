@@ -276,6 +276,47 @@ test("validation tolerates auxiliary traffic and interrupted retries without hid
   assert.ok(unsafe.entries[0].errors.includes("unredacted_header:authorization"));
 });
 
+test("HTML report uses default validation for auxiliary, interrupted and unsafe attempts",async t=>{
+  const root=workspace(t),writer=new TraceWriter(path.join(root,"capture")),f=fixture("openai-responses"),now=Date.now();
+  writer.write({method:"GET",url:"http://mock/v1/plugins/featured",requestHeaders:{},requestBody:Buffer.alloc(0),
+    statusCode:200,responseHeaders:{"content-type":"application/json"},responseChunks:[Buffer.from("{}")],
+    requestTimestamp:now,responseTimestamp:now,firstChunkTimestamp:now});
+  writer.write({method:"POST",url:"http://mock/v1/messages/count_tokens",requestHeaders:{},
+    requestBody:Buffer.from(JSON.stringify({model:"test-model",messages:[{role:"user",content:"hi"}]})),
+    statusCode:200,responseHeaders:{"content-type":"application/json"},responseChunks:[Buffer.from('{"input_tokens":2}')],
+    requestTimestamp:now,responseTimestamp:now,firstChunkTimestamp:now});
+  write(writer,"openai-responses",f.request,f.response);
+  writer.write({method:"POST",url:"http://mock/v1/responses",requestHeaders:{},requestBody:Buffer.from(JSON.stringify({...f.request,stream:true})),
+    statusCode:200,responseHeaders:{"content-type":"text/event-stream"},responseChunks:[Buffer.from('data: {"type":"response.created","response":{}}\n\n')],
+    requestTimestamp:now,responseTimestamp:now,firstChunkTimestamp:now,status:"aborted",error:{code:"downstream_aborted",message:"cancelled"}});
+  writer.stop();
+  const input=[writer.directory];
+  const lenient=validateTraces(input,path.join(root,"lenient.json"));
+  assert.equal(lenient.capture_complete,true);assert.equal(lenient.protocol_valid,true);
+  assert.deepEqual(lenient.entries.map((entry:Json)=>entry.excluded),[true,false,false,true]);
+  assert.deepEqual(lenient.entries[0].warnings,["auxiliary_request"]);
+  assert.deepEqual(lenient.entries[1].warnings,["auxiliary_request"]);
+  assert.ok(lenient.entries[3].warnings.includes("interrupted_attempt"));
+  const strict=validateTraces(input,path.join(root,"strict.json"),"complete",true);
+  assert.equal(strict.capture_complete,false);assert.equal(strict.protocol_valid,false);
+  assert.ok(strict.entries.every((entry:Json)=>entry.excluded===false));
+  await reportTraces(input,path.join(root,"report.html"));
+  const html=fs.readFileSync(path.join(root,"report.html"),"utf8");
+  const escape=(value:string)=>value.replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]!));
+  for(const entry of lenient.entries)assert.ok(html.includes(`<pre>${escape(JSON.stringify(entry,null,2))}</pre>`));
+  assert.ok(html.includes("Excluded from aggregate model checks (integrity checks still apply): auxiliary_request"));
+  assert.ok(html.includes("Excluded from aggregate model checks (integrity checks still apply): interrupted_attempt"));
+
+  const records=fs.readFileSync(writer.file,"utf8").trimEnd().split("\n").map(line=>JSON.parse(line));
+  records[0].request.headers.authorization="secret";
+  fs.writeFileSync(writer.file,records.map(record=>JSON.stringify(record)).join("\n")+"\n");
+  const unsafe=validateTraces(input,path.join(root,"unsafe.json"));
+  assert.equal(unsafe.capture_complete,false);assert.equal(unsafe.protocol_valid,false);
+  assert.ok(unsafe.entries[0].errors.includes("unredacted_header:authorization"));
+  await reportTraces(input,path.join(root,"unsafe-report.html"));
+  assert.ok(fs.readFileSync(path.join(root,"unsafe-report.html"),"utf8").includes("unredacted_header:authorization"));
+});
+
 test("replay stream controls, state refusal, deterministic sampling and concurrency",async t=>{
   const root=workspace(t),w=new TraceWriter(path.join(root,"source"));const f=fixture("openai-responses");
   for(let i=0;i<4;i++)write(w,"openai-responses",{...f.request,model:`m${i}`},f.response);w.stop();

@@ -161,7 +161,7 @@ llm-trace report --input captures/run-001 --output reports/trace.html
 
 validate 分开报告 capture_complete、protocol_valid、http_success、model_complete。完整采到 401/429 可能通过采集和协议检查，但不是训练样本；HTTP 200 也可能模型截断。它不修改 trace，不运行客户端。若使用未脱敏采集，报告可能包含 unredacted_header 错误。
 
-report 可按 run、协议、模型和 URL 搜索，展示原始内容、规范化结果和校验诊断；不会自动打开浏览器。report 成功生成不代表其中所有请求通过校验。
+report 生成旧版 conversation viewer 的自包含 HTML，包含 conversations、raw calls 和 json debug 视图。conversation 视图按 step 展示 system message、system reminder、user/assistant message、工具及 response，每个区块都可以展开原始 JSON；顶部的数字列表可以跳转到指定 response。报告不会自动打开浏览器。校验结果和错误详情仍使用 `validate` 输出。
 
 ## llm-trace replay
 

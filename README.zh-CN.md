@@ -55,7 +55,7 @@ Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/�
 
 ## 校验与报告
 
-validate 独立报告采集完整性、协议有效性、HTTP 成功、模型完成。完整采到的 401/429 可以是有效采集，但不是训练目标；token 截断单独标记。只检查已有工具历史，不要求末尾新生成的 tool call 已有结果。`--outcome incomplete` 不会自动升级。退出码：有效且完整 0；无效或不完整 1；命令参数错误 2。HTML 离线生成，展示原始请求/响应与独立校验结果。
+validate 独立报告采集完整性、协议有效性、HTTP 成功、模型完成。完整采到的 401/429 可以是有效采集，但不是训练目标；token 截断单独标记。只检查已有工具历史，不要求末尾新生成的 tool call 已有结果。`--outcome incomplete` 不会自动升级。退出码：有效且完整 0；无效或不完整 1；命令参数错误 2。`report` 离线生成自包含的 conversation viewer；校验结果继续通过 `validate` 查看。
 
 ## 重放
 

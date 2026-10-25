@@ -95,6 +95,22 @@ export class ClaudeApp extends LitElement {
 		return this.processedPairs.filter((pair) => this.selectedModels.has(pair.model));
 	}
 
+	/** Stable step numbers used by the horizontal jump list and conversation cards. */
+	private get stepNumberById(): Map<string, number> {
+		return new Map(this.filteredProcessedPairs.map((pair, index) => [pair.id, index + 1]));
+	}
+
+	/** Scrolls to a response card after switching back to the conversation view. */
+	private jumpToStep(pairId: string) {
+		this.currentView = "conversations";
+		void this.updateComplete.then(() => {
+			setTimeout(() => {
+				const safeId = `trace-step-${pairId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+				document.getElementById(safeId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+			}, 0);
+		});
+	}
+
 	/** Raw pairs filtered by selected models (unused — raw view shows all). */
 	private get filteredRawPairs() {
 		return this.data.rawPairs.filter((pair) => {
@@ -134,6 +150,8 @@ export class ClaudeApp extends LitElement {
 	render() {
 		const modelCounts = this.modelCounts;
 		const filteredConversations = this.filteredConversations;
+		const stepPairs = this.filteredProcessedPairs;
+		const stepNumberById = this.stepNumberById;
 
 		return html`
 			<div class="min-h-screen bg-vs-bg text-vs-text font-mono">
@@ -171,6 +189,34 @@ export class ClaudeApp extends LitElement {
 							</span>
 						</div>
 
+							${stepPairs.length > 0
+								? html`
+										<nav class="trace-step-nav" aria-label="Trace steps">
+											<span class="trace-step-nav-label">steps</span>
+											<div class="trace-step-list">
+												${stepPairs.map(
+													(pair, index) => html`
+														<button
+															class="trace-step-button"
+															@click=${() => this.jumpToStep(pair.id)}
+															title=${`${pair.model} · ${new Date(pair.timestamp).toLocaleString()}`}
+														>
+															${index + 1}
+														</button>
+													`,
+												)}
+																<button
+																	class="trace-step-button"
+																	@click=${() => this.jumpToStep("final-response")}
+																	title="Final response"
+																>
+																	${stepPairs.length + 1}
+																</button>
+											</div>
+										</nav>
+								  `
+								: ""}
+
 						${modelCounts.size > 1 && this.currentView !== "raw"
 							? html`
 									<div class="mb-4 text-center">
@@ -197,6 +243,7 @@ export class ClaudeApp extends LitElement {
 											? html`<div>No conversations found for selected models.</div>`
 											: html`<simple-conversation-view
 													.conversations=${filteredConversations}
+														.stepNumbers=${stepNumberById}
 												></simple-conversation-view>`}
 									</div>
 								`

@@ -17,13 +17,14 @@ import type {
 	Message,
 	ToolUnion,
 } from "@anthropic-ai/sdk/resources/messages";
-import { SimpleConversation, EnhancedMessageParam } from "../../../src/report/shared-conversation-processor";
+import { ProcessedPair, SimpleConversation, EnhancedMessageParam } from "../../../src/report/shared-conversation-processor";
 import { markdownToHtml } from "../utils/markdown";
 
 /** Renders {@link SimpleConversation} threads in the main conversations tab. */
 @customElement("simple-conversation-view")
 export class SimpleConversationView extends LitElement {
 	@property({ type: Array }) conversations: SimpleConversation[] = [];
+	@property({ attribute: false }) stepNumbers: Map<string, number> = new Map();
 
 	/** Light DOM so global Tailwind classes apply. */
 	createRenderRoot() {
@@ -115,22 +116,28 @@ export class SimpleConversationView extends LitElement {
 	 *
 	 * @param toolResults - Map of tool_use_id → tool_result hoisted by the processor.
 	 */
-	private formatContent(content: string | ContentBlockParam[], toolResults?: Record<string, any>): TemplateResult {
+	private formatContent(
+		content: string | ContentBlockParam[],
+		toolResults?: Record<string, any>,
+		showContextBlocks = true,
+	): TemplateResult {
 		if (typeof content === "string") {
-			return this.formatStringContent(content);
+			return this.formatStringContent(content, showContextBlocks);
 		}
 
 		if (Array.isArray(content)) {
 			return html`
 				${content.map((block) => {
 					if (block.type === "text") {
-						return this.formatStringContent(block.text);
+						return this.formatStringContent(block.text, showContextBlocks);
 					} else if (block.type === "thinking") {
 						const thinkingBlock = block as any;
 						return this.renderThinkingBlock(thinkingBlock.thinking || "");
 					} else if (block.type === "tool_result") {
-						// Skip standalone tool_result blocks - they will be paired with tool_use
-						return html``;
+						// Results are rendered next to their tool_use when a lookup is available.
+						return toolResults?.[(block as any).tool_use_id]
+							? html``
+							: this.renderToolResult(block);
 					} else if (block.type === "tool_use") {
 						const toolUse = block as any;
 						const toolResult = toolResults?.[toolUse.id];
@@ -243,11 +250,11 @@ export class SimpleConversationView extends LitElement {
 			html`<div class="text-vs-muted">
 				${blocks.map(
 					(block, index) => html`
-						<div class="mb-4">
-							${blocks.length > 1
-								? html`<div class="text-vs-function font-bold mb-2">${title} ${index + 1}:</div>`
-								: ""}
-							<div class="markdown-content">${unsafeHTML(markdownToHtml(block))}</div>
+						<div class="trace-block trace-message-system mb-4">
+							<div class="trace-block-header">
+								${blocks.length > 1 ? `${title} ${index + 1}` : title}
+							</div>
+							<div class="trace-block-body markdown-content">${unsafeHTML(markdownToHtml(block))}</div>
 						</div>
 					`,
 				)}
@@ -314,7 +321,7 @@ export class SimpleConversationView extends LitElement {
 	 * Parses a plain-text message: main markdown body plus collapsible sections
 	 * for Codex context tags, EXTREMELY_IMPORTANT, and system-reminder blocks.
 	 */
-	private formatStringContent(content: string): TemplateResult {
+	private formatStringContent(content: string, showContextBlocks = true): TemplateResult {
 		const { sections: codexContextSections, remaining: afterCodexContext } =
 			this.extractCodexContextSections(content);
 		const { blocks: extremelyImportantBlocks, remaining: afterExtremelyImportant } =
@@ -326,9 +333,13 @@ export class SimpleConversationView extends LitElement {
 
 		return html`
 			${mainContent ? html`<div class="mt-4 markdown-content">${unsafeHTML(markdownToHtml(mainContent))}</div>` : ""}
-			${codexContextSections.map(({ title, blocks }) => this.renderTaggedCollapsibleSections(title, blocks))}
-			${this.renderTaggedCollapsibleSections("Extremely Important", extremelyImportantBlocks)}
-			${this.renderTaggedCollapsibleSections("System Reminder", systemReminderBlocks)}
+			${showContextBlocks
+				? html`
+						${codexContextSections.map(({ title, blocks }) => this.renderTaggedCollapsibleSections(title, blocks))}
+						${this.renderTaggedCollapsibleSections("Extremely Important", extremelyImportantBlocks)}
+						${this.renderTaggedCollapsibleSections("System Reminder", systemReminderBlocks)}
+					`
+				: ""}
 		`;
 	}
 
@@ -399,6 +410,260 @@ export class SimpleConversationView extends LitElement {
 		}
 
 		return html`<pre>${JSON.stringify(response, null, 2)}</pre>`;
+	}
+
+	/** Creates a DOM-safe anchor shared with the top step navigation. */
+	private stepAnchorId(pairId: string): string {
+		return `trace-step-${pairId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+	}
+
+	/** Pretty-printed raw JSON that can be opened independently for every block. */
+	private renderRawJson(title: string, value: unknown): TemplateResult {
+		let json = "";
+		try {
+			json = JSON.stringify(value, null, 2);
+		} catch (error) {
+			json = `Unable to serialize JSON: ${String(error)}`;
+		}
+
+		return html`
+			<details class="trace-json-details">
+				<summary>原始 JSON · ${title}</summary>
+				<pre>${json}</pre>
+			</details>
+		`;
+	}
+
+	/** Pretty-printed normalized JSON for the request or response shown in a step. */
+	private renderParsedJson(title: string, value: unknown): TemplateResult {
+		let json = "";
+		try {
+			json = JSON.stringify(value, null, 2);
+		} catch (error) {
+			json = `Unable to serialize JSON: ${String(error)}`;
+		}
+
+		return html`
+			<details class="trace-json-details trace-parsed-json">
+				<summary>解析后 JSON · ${title}</summary>
+				<pre>${json}</pre>
+			</details>
+		`;
+	}
+
+	/** Builds the tool-result lookup used to pair results with tool calls in one step. */
+	private getToolResults(messages: MessageParam[]): Record<string, any> {
+		const results: Record<string, any> = {};
+		const toolUseIds = new Set<string>();
+		for (const message of messages) {
+			if (!Array.isArray(message.content)) continue;
+			for (const block of message.content as any[]) {
+				if (block?.type === "tool_use" && block.id) toolUseIds.add(block.id);
+			}
+		}
+		for (const message of messages) {
+			if (!Array.isArray(message.content)) continue;
+			for (const block of message.content as any[]) {
+				if (block?.type === "tool_result" && block.tool_use_id && toolUseIds.has(block.tool_use_id)) {
+					results[block.tool_use_id] = block;
+				}
+			}
+		}
+		return results;
+	}
+
+	/** Returns only messages newly added since the preceding API request. */
+	private getStepMessages(pair: ProcessedPair, index: number): MessageParam[] {
+		const current = (pair.request.messages || []) as MessageParam[];
+		if (index === 0) {
+			// Some providers put system-role entries in messages instead of the
+			// top-level system field. They are rendered in the shared header.
+			return current.filter((message) => message.role !== "system");
+		}
+
+		// A request carries the complete history. The final user message is the
+		// new input/tool result for this step; all preceding assistant/user entries
+		// belong to earlier steps and must stay out of this card.
+		const lastUserIndex = current.findLastIndex((message) => message.role === "user");
+		if (lastUserIndex >= 0) return [current[lastUserIndex]];
+		return current.length > 0 ? [current[current.length - 1]] : [];
+	}
+
+	/** Toggles a complete step while keeping its header and jump target visible. */
+	private toggleStep(e: Event) {
+		const header = e.currentTarget as HTMLElement;
+		const content = header.nextElementSibling as HTMLElement;
+		const toggle = header.querySelector(".trace-step-toggle") as HTMLElement;
+		if (!content) return;
+
+		const isHidden = content.classList.contains("hidden");
+		content.classList.toggle("hidden", !isHidden);
+		if (toggle) toggle.textContent = isHidden ? "[-]" : "[+]";
+	}
+
+	/** Renders shared system/tools blocks once before the step list. */
+	private renderSharedContext(conversation: SimpleConversation): TemplateResult {
+		const tools = conversation.finalPair.request.tools || [];
+		const leadingSystemMessages = ((conversation.allPairs[0]?.request.messages || []) as MessageParam[]).filter(
+			(message) => message.role === "system",
+		);
+
+		return html`
+			${conversation.system
+				? this.renderCollapsibleSection(
+						"System message",
+						html`
+							<div class="trace-block-body markdown-content">
+								${unsafeHTML(this.formatSystem(conversation.system))}
+							</div>
+							${this.renderRawJson("system message", conversation.system)}
+						`,
+						{
+							titleClasses: "trace-block-header text-vs-function",
+							containerClasses: "trace-context-section trace-block trace-message-system",
+						},
+				  )
+				: ""}
+
+			${leadingSystemMessages.map((message, index) =>
+				this.renderCollapsibleSection(
+					`System message ${index + 1}`,
+					html`
+						<div class="trace-block-body markdown-content">
+							${this.formatContent(message.content, undefined, false)}
+						</div>
+						${this.renderRawJson(`system message ${index + 1}`, message)}
+					`,
+					{
+						titleClasses: "trace-block-header text-vs-function",
+						containerClasses: "trace-context-section trace-block trace-message-system",
+					},
+				),
+			)}
+
+			${tools.length > 0
+				? this.renderCollapsibleSection(
+						"Tools",
+						html`
+							<div class="trace-block-body">${this.renderTools(tools as ToolUnion[])}</div>
+							${this.renderRawJson("tools", tools)}
+						`,
+						{
+							titleClasses: "trace-block-header text-vs-type",
+							containerClasses: "trace-context-section trace-block trace-message-tool",
+							count: tools.length,
+						},
+				  )
+				: ""}
+
+		`;
+	}
+
+	/** Labels a normalized message while keeping tool results visible on their own. */
+	private getTimelineMessageLabel(message: MessageParam): string {
+		if (Array.isArray(message.content) && message.content.length > 0) {
+			if (message.content.every((block: any) => block?.type === "tool_result")) return "Tool result";
+			if (message.content.some((block: any) => block?.type === "tool_use")) return "Tool call";
+		}
+		return message.role === "user" ? "User message" : `${message.role || "Message"} message`;
+	}
+
+	/** Renders one timeline item with exactly one normalized JSON disclosure. */
+	private renderTimelineItem(
+		label: string,
+		roleClass: string,
+		content: TemplateResult,
+		parsed: unknown,
+	): TemplateResult {
+		return html`
+			<div class="trace-block ${roleClass}">
+				<div class="trace-block-header">${label}</div>
+				<div class="trace-block-body">${content}</div>
+			</div>
+			${this.renderParsedJson(label, parsed)}
+		`;
+	}
+
+	/** Renders a logical step: initial user, then assistant response + next tool/user result. */
+	private renderTimelineStep(
+		anchorId: string,
+		stepNumber: number,
+		metaPair: ProcessedPair,
+		items: TemplateResult[],
+	): TemplateResult {
+		return html`
+			<section id=${this.stepAnchorId(anchorId)} class="trace-step-card">
+				<div class="trace-step-header" @click=${this.toggleStep}>
+					<span><span class="trace-step-toggle mr-2">[-]</span><span class="trace-step-title">Step ${stepNumber}</span></span>
+					<span class="trace-step-meta">
+						${metaPair.model} · ${metaPair.isStreaming ? "streaming" : "non-streaming"} ·
+						${new Date(metaPair.timestamp).toLocaleString()}
+					</span>
+				</div>
+				<div class="trace-step-content">${items}</div>
+			</section>
+		`;
+	}
+
+	/** Renders the logical timeline without replaying the full request history. */
+	private renderConversationSteps(conversation: SimpleConversation): TemplateResult {
+		const pairs = conversation.allPairs.filter(
+			(pair) => this.stepNumbers.size === 0 || this.stepNumbers.has(pair.id),
+		);
+		if (pairs.length === 0) return html``;
+
+		const firstPair = pairs[0];
+		const firstMessage = this.getStepMessages(firstPair, 0).find((message) => message.role === "user");
+		const firstItems = firstMessage
+			? [
+					this.renderTimelineItem(
+						this.getTimelineMessageLabel(firstMessage),
+						"trace-message-user",
+						this.formatContent(firstMessage.content, this.getToolResults([firstMessage]), true),
+						firstMessage,
+					),
+			  ]
+			: [];
+
+		const steps = [this.renderTimelineStep(firstPair.id, 1, firstPair, firstItems)];
+		for (let index = 1; index < pairs.length; index++) {
+			const previousPair = pairs[index - 1];
+			const currentPair = pairs[index];
+			const currentMessage = this.getStepMessages(currentPair, index)[0];
+			const items = [
+				this.renderTimelineItem(
+					"Thinking / message / tool call",
+					"trace-message-assistant",
+					this.formatResponseContent(previousPair.response),
+					previousPair.response,
+				),
+				...(currentMessage
+					? [
+							this.renderTimelineItem(
+								this.getTimelineMessageLabel(currentMessage),
+								"trace-message-user",
+								this.formatContent(currentMessage.content, this.getToolResults([currentMessage]), false),
+								currentMessage,
+							),
+					  ]
+					: []),
+			];
+			steps.push(this.renderTimelineStep(currentPair.id, index + 1, currentPair, items));
+		}
+
+		const finalPair = pairs[pairs.length - 1];
+		steps.push(
+			this.renderTimelineStep("final-response", pairs.length + 1, finalPair, [
+				this.renderTimelineItem(
+					"Final response",
+					"trace-message-assistant",
+					this.formatResponseContent(finalPair.response),
+					finalPair.response,
+				),
+			]),
+		);
+
+		return html`<div class="trace-context-root">${this.renderSharedContext(conversation)}</div>${steps}`;
 	}
 
 	/** Formats `ToolName(param)` header text for single-argument tools. */
@@ -972,7 +1237,7 @@ ${typeof toolResult.content === "string" ? toolResult.content : JSON.stringify(t
 													<span class="ml-4">${this.formatMetadataLine(conversation)}</span>
 												</div>
 											</div>
-											${this.renderConversationContent(conversation)}
+												${this.renderConversationSteps(conversation)}
 										</div>
 									`
 								: html`
@@ -985,7 +1250,7 @@ ${typeof toolResult.content === "string" ? toolResult.content : JSON.stringify(t
 												<span class="ml-4">${this.formatMetadataLine(conversation)}</span>
 											</div>
 										</div>
-										${this.renderConversationContent(conversation)}
+										${this.renderConversationSteps(conversation)}
 									`}
 						</div>
 					`,

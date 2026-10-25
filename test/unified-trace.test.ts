@@ -276,7 +276,7 @@ test("validation tolerates auxiliary traffic and interrupted retries without hid
   assert.ok(unsafe.entries[0].errors.includes("unredacted_header:authorization"));
 });
 
-test("HTML report uses default validation for auxiliary, interrupted and unsafe attempts",async t=>{
+test("HTML report uses the conversation viewer and preserves raw attempts",async t=>{
   const root=workspace(t),writer=new TraceWriter(path.join(root,"capture")),f=fixture("openai-responses"),now=Date.now();
   writer.write({method:"GET",url:"http://mock/v1/plugins/featured",requestHeaders:{},requestBody:Buffer.alloc(0),
     statusCode:200,responseHeaders:{"content-type":"application/json"},responseChunks:[Buffer.from("{}")],
@@ -302,10 +302,10 @@ test("HTML report uses default validation for auxiliary, interrupted and unsafe 
   assert.ok(strict.entries.every((entry:Json)=>entry.excluded===false));
   await reportTraces(input,path.join(root,"report.html"));
   const html=fs.readFileSync(path.join(root,"report.html"),"utf8");
-  const escape=(value:string)=>value.replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]!));
-  for(const entry of lenient.entries)assert.ok(html.includes(`<pre>${escape(JSON.stringify(entry,null,2))}</pre>`));
-  assert.ok(html.includes("Excluded from aggregate model checks (integrity checks still apply): auxiliary_request"));
-  assert.ok(html.includes("Excluded from aggregate model checks (integrity checks still apply): interrupted_attempt"));
+  assert.ok(html.includes("trace-step-nav"));
+  assert.ok(html.includes("trace-step-card"));
+  assert.ok(html.includes("原始 JSON"));
+  assert.ok(html.includes("openai-responses"));
 
   const records=fs.readFileSync(writer.file,"utf8").trimEnd().split("\n").map(line=>JSON.parse(line));
   records[0].request.headers.authorization="secret";
@@ -314,7 +314,7 @@ test("HTML report uses default validation for auxiliary, interrupted and unsafe 
   assert.equal(unsafe.capture_complete,false);assert.equal(unsafe.protocol_valid,false);
   assert.ok(unsafe.entries[0].errors.includes("unredacted_header:authorization"));
   await reportTraces(input,path.join(root,"unsafe-report.html"));
-  assert.ok(fs.readFileSync(path.join(root,"unsafe-report.html"),"utf8").includes("unredacted_header:authorization"));
+  assert.ok(fs.readFileSync(path.join(root,"unsafe-report.html"),"utf8").includes("window.claudeData"));
 });
 
 test("replay stream controls, state refusal, deterministic sampling and concurrency",async t=>{

@@ -93,7 +93,7 @@ gzip/br/deflate 等只在存储解释时解码；无法解码的内容保存编�
 
 完整的 401/429 可以是有效采集，但不是成功训练样本；有明确错误的连接失败也不等于模型成功。工具历史不要求最终 tool call 已有下一轮结果。validate 另外检查重复 ID、时间顺序、未脱敏头、manifest 状态，写独立报告而不清洗输入；显式 incomplete 不会被升级。
 
-report 输出可搜索的独立 HTML，包含校验结果、规范化视图、原始请求/响应与时间。规范化失败会展示诊断，原始内容仍可查阅。
+report 使用 `report/html-generator.ts` 嵌入 Lit viewer bundle，输出可离线打开的自包含 HTML。conversation 视图按 API step 分块展示 system、system reminder、用户/助手消息、工具和 response，并为每个区块提供原始 JSON 折叠面板；顶部步骤导航可直接跳转到对应 response。协议与采集校验仍由 `validate` 单独输出。
 
 replay 先验证全部选中请求，按原协议构建目标 operation；只从指定环境变量获取新认证，不重用源认证头。并发 worker 执行单次 HTTP 请求，超时/取消也写新 trace，最终保存 `replay.json`。它支持模型、token 上限和 stream 覆盖，但拒绝 previous_response_id 等服务端历史依赖，不执行工具、不续跑下一轮，也不进行跨协议转换。
 

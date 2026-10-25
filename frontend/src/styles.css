@@ -7,6 +7,147 @@ html, body {
     background-color: #1e1e1e; /* vs-bg color */
 }
 
+/* Step navigation and block cards used by the report viewer. */
+.trace-step-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 0 auto 1.5rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #3e3e42;
+    background: #252526;
+    position: sticky;
+    top: 0.5rem;
+    z-index: 10;
+}
+
+.trace-step-nav-label {
+    color: #dcdcaa;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex: 0 0 auto;
+}
+
+.trace-step-list {
+    display: flex;
+    gap: 0.45rem;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+}
+
+.trace-step-button {
+    border: 1px solid #569cd6;
+    background: #1e1e1e;
+    color: #9cdcfe;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.55rem;
+    cursor: pointer;
+    font: inherit;
+}
+
+.trace-step-button:hover,
+.trace-step-button:focus-visible {
+    background: #264f78;
+    color: #ffffff;
+    outline: none;
+}
+
+.trace-step-card {
+    border: 1px solid #569cd6;
+    background: #1e1e1e;
+    margin: 1.5rem 0;
+    scroll-margin-top: 4rem;
+}
+
+.trace-step-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #3e3e42;
+    background: #252526;
+    cursor: pointer;
+}
+
+.trace-step-title {
+    color: #4ec9b0;
+    font-weight: 700;
+}
+
+.trace-step-meta {
+    color: #808080;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.trace-step-content {
+    padding: 0 0.25rem 1rem;
+}
+
+.trace-context-root {
+    margin-bottom: 1.5rem;
+}
+
+.trace-block {
+    border: 1px solid #3e3e42;
+    margin: 1rem;
+    background: #202124;
+}
+
+.trace-block-header {
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid #3e3e42;
+    color: #dcdcaa;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.trace-block-body {
+    padding: 0.85rem;
+}
+
+.trace-message-user .trace-block-header {
+    color: #ce9178;
+}
+
+.trace-message-assistant .trace-block-header {
+    color: #d4d4d4;
+}
+
+.trace-message-system .trace-block-header {
+    color: #dcdcaa;
+}
+
+.trace-message-tool .trace-block-header {
+    color: #4ec9b0;
+}
+
+.trace-json-details {
+    margin: 0 1rem 1rem;
+    border: 1px dashed #55565c;
+    background: #181818;
+}
+
+.trace-json-details summary {
+    cursor: pointer;
+    padding: 0.55rem 0.75rem;
+    color: #9cdcfe;
+}
+
+.trace-json-details pre {
+    margin: 0;
+    padding: 0.85rem;
+    border-top: 1px dashed #55565c;
+    color: #d4d4d4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: auto;
+}
+
 
 /* Text wrapping only for markdown content */
 .markdown-content {

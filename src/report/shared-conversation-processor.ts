@@ -36,6 +36,8 @@ import {
 export interface ProcessedPair {
     id: string;
     timestamp: string;
+    /** Original schema-v2 request/response pair for the expandable raw JSON view. */
+    rawPair?: RawPair;
     request: MessageCreateParams;
     response: Message;
     model: string;
@@ -200,6 +202,7 @@ export class SharedConversationProcessor {
                 processedPairs.push({
                     id: `${pair.request.timestamp || Date.now()}_${Math.random()}`,
                     timestamp: new Date(pair.request.timestamp || Date.now()).toISOString(),
+                    rawPair: pair,
                     request,
                     response,
                     model,

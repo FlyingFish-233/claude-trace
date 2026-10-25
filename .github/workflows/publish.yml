@@ -73,11 +73,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm run test:unit
-
       - name: Build
         run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
 
       - name: Smoke test CLI
         run: node dist/cli/cli.js --help

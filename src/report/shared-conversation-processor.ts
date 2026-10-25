@@ -171,7 +171,7 @@ export class SharedConversationProcessor {
 
         for (let i = 0; i < rawPairs.length; i++) {
             const pair = rawPairs[i];
-            if (!pair?.request || !pair?.response) {
+            if (!pair?.request || !pair?.response || this.isAnthropicTokenCount(pair)) {
                 continue;
             }
 
@@ -218,6 +218,16 @@ export class SharedConversationProcessor {
         }
 
         return processedPairs;
+    }
+
+    /** Excludes Anthropic token estimates from model conversation steps. */
+    private isAnthropicTokenCount(pair: RawPair): boolean {
+        if (pair.request.method.toUpperCase() !== "POST") return false;
+        try {
+            return new URL(pair.request.url).pathname.replace(/\/+$/, "").endsWith("/v1/messages/count_tokens");
+        } catch {
+            return false;
+        }
     }
 
     /**

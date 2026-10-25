@@ -196,3 +196,32 @@ describe("SharedConversationProcessor.mergeConversations", () => {
 		assert.equal(metadata.outputTokens, 12);
 	});
 });
+
+describe("SharedConversationProcessor.processRawPairs", () => {
+	it("omits token-count requests from conversations while retaining model calls", () => {
+		const processor = new SharedConversationProcessor();
+		const rawPairs = [
+			{
+				request: {
+					method: "POST",
+					url: "http://mock/prefix/v1/messages/count_tokens",
+					body: { model: "claude-test", messages: [{ role: "user", content: "repeated context" }] },
+				},
+				response: { body: { input_tokens: 100 } },
+			},
+			{
+				request: {
+					method: "POST",
+					url: "http://mock/prefix/v1/messages",
+					body: { model: "claude-test", messages: [{ role: "user", content: "question" }] },
+				},
+				response: { body: { role: "assistant", content: [{ type: "text", text: "answer" }] } },
+			},
+		] as any;
+
+		const processed = processor.processRawPairs(rawPairs);
+		assert.equal(processed.length, 1);
+		assert.equal(processed[0].request.messages[0].content, "question");
+		assert.equal(rawPairs.length, 2);
+	});
+});

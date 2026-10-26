@@ -6,7 +6,8 @@
  */
 
 import { ClaudeApp } from "./app";
-import "./components/simple-conversation-view";
+import "./components/conversation-view";
+import "./components/conversation-sidebar-view";
 import "./components/raw-pairs-view";
 import "./components/json-view";
 

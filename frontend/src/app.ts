@@ -14,6 +14,7 @@ import {
 	SimpleConversation,
 	ProcessedPair,
 } from "../../src/report/shared-conversation-processor";
+import { conversationAnchorId, traceToViewerConversation, trainToViewerConversation } from "./utils/viewer-model";
 
 /** Top-level trace viewer shell mounted on `#app` in generated HTML reports. */
 @customElement("claude-app")
@@ -23,6 +24,8 @@ export class ClaudeApp extends LitElement {
 	@state() private processedPairs: ProcessedPair[] = [];
 	@state() private currentView: "conversations" | "raw" | "json" = "conversations";
 	@state() private selectedModels: Set<string> = new Set();
+	@state() private selectedConversationId: string | null = null;
+	@state() private selectedTrajectory = 0;
 
 	/**
 	 * Render into the light DOM so Tailwind utility classes from the injected
@@ -42,6 +45,7 @@ export class ClaudeApp extends LitElement {
 
 	/** Normalizes raw pairs and builds conversation threads for the UI. */
 	private processData() {
+		if (this.data.trainTrajectories) return;
 		const start = performance.now();
 
 		// Use shared processor for both processed pairs and conversations
@@ -80,6 +84,9 @@ export class ClaudeApp extends LitElement {
 			newSelectedModels.add(model);
 		}
 		this.selectedModels = newSelectedModels;
+		if (this.selectedConversationId && !this.filteredConversations.some((conversation) => conversation.id === this.selectedConversationId)) {
+			this.selectedConversationId = this.filteredConversations[0]?.id || null;
+		}
 	}
 
 	/** Conversations where at least one model is currently selected. */
@@ -95,20 +102,39 @@ export class ClaudeApp extends LitElement {
 		return this.processedPairs.filter((pair) => this.selectedModels.has(pair.model));
 	}
 
-	/** Stable step numbers used by the horizontal jump list and conversation cards. */
-	private get stepNumberById(): Map<string, number> {
-		return new Map(this.filteredProcessedPairs.map((pair, index) => [pair.id, index + 1]));
+	/** Pair IDs currently permitted by the model filter. */
+	private get visiblePairIds(): Set<string> {
+		return new Set(this.filteredProcessedPairs.map((pair) => pair.id));
 	}
 
-	/** Scrolls to a response card after switching back to the conversation view. */
-	private jumpToStep(pairId: string) {
+	/** Opens any enclosing compacted card before navigating to its section. */
+	private jumpToAnchor(anchorId: string) {
 		this.currentView = "conversations";
 		void this.updateComplete.then(() => {
 			setTimeout(() => {
-				const safeId = `trace-step-${pairId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-				document.getElementById(safeId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+				const target = document.getElementById(anchorId);
+				if (!target) return;
+				const compacted = target.closest(".trace-compacted-content");
+				if (compacted?.classList.contains("hidden")) (compacted.previousElementSibling as HTMLElement)?.click();
+				if (target.classList.contains("trace-context-anchor")) {
+					const header = target.querySelector<HTMLElement>(".trace-context-section > div:first-child");
+					if (header?.nextElementSibling?.classList.contains("hidden")) header.click();
+				}
+				target.scrollIntoView({ behavior: "smooth", block: "start" });
 			}, 0);
 		});
+	}
+
+	private selectTrajectory(index: number) {
+		this.selectedTrajectory = index;
+		this.jumpToAnchor(conversationAnchorId(`train-${index}`));
+	}
+
+	private selectConversation(index: number) {
+		const conversation = this.filteredConversations[index];
+		if (!conversation) return;
+		this.selectedConversationId = conversation.id;
+		this.jumpToAnchor(conversationAnchorId(conversation.id));
 	}
 
 	/** Raw pairs filtered by selected models (unused — raw view shows all). */
@@ -139,6 +165,7 @@ export class ClaudeApp extends LitElement {
 
 	/** Resolves the tool-specific brand string for the page header. */
 	private getBrandName(): string {
+		if (this.data.trainTrajectories) return "llm-trace · train";
 		const tool = this.data.metadata?.tool as string | undefined;
 		if (tool === "claude") return "claude-trace";
 		if (tool === "opencode") return "opencode-trace";
@@ -148,14 +175,17 @@ export class ClaudeApp extends LitElement {
 
 	/** Main layout: header, view tabs, model filters, and active view content. */
 	render() {
+		if (this.data.trainTrajectories) return this.renderTrainReport();
 		const modelCounts = this.modelCounts;
 		const filteredConversations = this.filteredConversations;
-		const stepPairs = this.filteredProcessedPairs;
-		const stepNumberById = this.stepNumberById;
+		const visiblePairIds = this.visiblePairIds;
+		const selectedIndex = Math.max(0, filteredConversations.findIndex((conversation) => conversation.id === this.selectedConversationId));
+		const selectedConversation = filteredConversations[selectedIndex];
+		const viewerConversation = selectedConversation ? traceToViewerConversation(selectedConversation, visiblePairIds) : undefined;
 
 		return html`
 			<div class="min-h-screen bg-vs-bg text-vs-text font-mono">
-				<div class="max-w-[60em] mx-auto p-4">
+				<div class="trace-page-header p-4">
 					<div class="mb-8">
 						<div class="mb-4 text-center">
 							<span class="text-vs-function">~ ${this.getBrandName()}</span>
@@ -189,34 +219,6 @@ export class ClaudeApp extends LitElement {
 							</span>
 						</div>
 
-							${stepPairs.length > 0
-								? html`
-										<nav class="trace-step-nav" aria-label="Trace steps">
-											<span class="trace-step-nav-label">steps</span>
-											<div class="trace-step-list">
-												${stepPairs.map(
-													(pair, index) => html`
-														<button
-															class="trace-step-button"
-															@click=${() => this.jumpToStep(pair.id)}
-															title=${`${pair.model} · ${new Date(pair.timestamp).toLocaleString()}`}
-														>
-															${index + 1}
-														</button>
-													`,
-												)}
-																<button
-																	class="trace-step-button"
-																	@click=${() => this.jumpToStep("final-response")}
-																	title="Final response"
-																>
-																	${stepPairs.length + 1}
-																</button>
-											</div>
-										</nav>
-								  `
-								: ""}
-
 						${modelCounts.size > 1 && this.currentView !== "raw"
 							? html`
 									<div class="mb-4 text-center">
@@ -235,19 +237,19 @@ export class ClaudeApp extends LitElement {
 							: ""}
 					</div>
 
-					<div>
-						${this.currentView === "conversations"
-							? html`
-									<div id="conversations-view">
-										${filteredConversations.length === 0
-											? html`<div>No conversations found for selected models.</div>`
-											: html`<simple-conversation-view
-													.conversations=${filteredConversations}
-														.stepNumbers=${stepNumberById}
-												></simple-conversation-view>`}
-									</div>
-								`
-							: ""}
+					</div>
+					${this.currentView === "conversations" ? html`
+						<div class="trace-layout">
+							<conversation-sidebar-view .conversations=${viewerConversation ? [viewerConversation] : []}
+								.selectionLabels=${filteredConversations.map((conversation) => `${Array.from(conversation.models).join(", ")} · ${new Date(conversation.metadata.startTime).toLocaleString()}`)}
+								.selectionKind=${"conversation"} .selectedIndex=${selectedIndex}
+								@collection-select=${(event: CustomEvent<number>) => this.selectConversation(event.detail)}
+								@navigation-jump=${(event: CustomEvent<string>) => this.jumpToAnchor(event.detail)}></conversation-sidebar-view>
+							<main id="conversations-view" class="trace-main">
+								${viewerConversation ? html`<conversation-view .conversations=${[viewerConversation]}></conversation-view>`
+									: html`<div>No conversations found for selected models.</div>`}
+							</main>
+						</div>` : html`<div class="trace-single-view p-4">
 						${this.currentView === "raw"
 							? html`
 									<div id="raw-view">
@@ -266,9 +268,31 @@ export class ClaudeApp extends LitElement {
 									</div>
 								`
 							: ""}
-					</div>
-				</div>
+					</div>`}
 			</div>
 		`;
+	}
+
+	/** Training files contain independent conversations, not API round trips. */
+	private renderTrainReport() {
+		const trajectories = this.data.trainTrajectories || [];
+		const selected = trajectories[this.selectedTrajectory];
+		const viewerConversation = selected ? trainToViewerConversation(selected, this.selectedTrajectory) : undefined;
+		return html`
+			<div class="min-h-screen bg-vs-bg text-vs-text font-mono">
+				<div class="trace-page-header p-4">
+					<div class="mb-4 text-center"><span class="text-vs-function">~ ${this.getBrandName()}</span>
+						<span class="text-vs-muted ml-8">${this.data.timestamp}</span></div>
+					<div class="mb-8 text-center text-vs-nav-active">conversations (${trajectories.length})</div>
+				</div>
+				<div class="trace-layout">
+					<conversation-sidebar-view .conversations=${viewerConversation ? [viewerConversation] : []}
+						.selectionLabels=${trajectories.map((trajectory, index) => `${trajectory.metadata?.chain_id || `Trajectory ${index + 1}`} · ${trajectory.messages.length} messages`)}
+						.selectionKind=${"trajectory"} .selectedIndex=${this.selectedTrajectory}
+						@navigation-jump=${(event: CustomEvent<string>) => this.jumpToAnchor(event.detail)}
+						@collection-select=${(event: CustomEvent<number>) => this.selectTrajectory(event.detail)}></conversation-sidebar-view>
+					<main class="trace-main">${viewerConversation ? html`<conversation-view .conversations=${[viewerConversation]}></conversation-view>` : html`<div>No training trajectories found.</div>`}</main>
+				</div>
+			</div>`;
 	}
 }

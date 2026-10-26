@@ -56,13 +56,34 @@ export interface SSEEvent {
 /** Root payload injected into generated HTML reports (`window.claudeData`). */
 export interface ClaudeData {
 	rawPairs: RawPair[];
+	/** Present for reports generated from train.jsonl, one entry per JSONL line. */
+	trainTrajectories?: TrainTrajectory[];
 	timestamp?: string;
 	metadata?: Record<string, any>;
+}
+
+export interface TrainMessage {
+	role: string;
+	content?: unknown;
+	reasoning_content?: unknown;
+	tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>;
+	tool_call_id?: string;
+	trainable?: boolean;
+	[key: string]: unknown;
+}
+
+export interface TrainTrajectory {
+	messages: TrainMessage[];
+	tools?: unknown[];
+	metadata?: Record<string, any>;
+	/** Source location for distinguishing repeated chain IDs across input files. */
+	source: { file: string; line: number };
 }
 
 /** Input to the HTML generator when building a report from in-memory or file data. */
 export interface HTMLGenerationData {
 	rawPairs: RawPair[];
+	trainTrajectories?: TrainTrajectory[];
 	timestamp: string;
 	title?: string;
 	/** When true, include non-message traffic in the viewer filters. */

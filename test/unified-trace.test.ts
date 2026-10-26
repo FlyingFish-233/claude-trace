@@ -302,7 +302,7 @@ test("HTML report uses the conversation viewer and preserves raw attempts",async
   assert.ok(strict.entries.every((entry:Json)=>entry.excluded===false));
   await reportTraces(input,path.join(root,"report.html"));
   const html=fs.readFileSync(path.join(root,"report.html"),"utf8");
-  assert.ok(html.includes("trace-step-nav"));
+  assert.ok(html.includes("trace-sidebar"));
   assert.ok(html.includes("trace-step-card"));
   assert.ok(html.includes("原始 JSON"));
   assert.ok(html.includes("openai-responses"));

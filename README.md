@@ -14,6 +14,7 @@ llm-trace capture --upstream https://provider.example/v1 --log-dir captures/run-
 llm-trace validate --input captures/run-001 --output validation.json
 llm-trace export --input captures/run-001 --output training.jsonl
 llm-trace report --input captures/run-001 --output report.html
+llm-trace report --input training.jsonl --output training-report.html
 llm-trace replay --input captures/run-001/trace.jsonl --line-number 1 \
   --base-url https://target.example/v1 --api-key-env TARGET_API_KEY --output replay/run-001
 
@@ -35,6 +36,8 @@ Each run directory contains only `manifest.json` and append-only `trace.jsonl` b
 Authorization, cookies and other configured sensitive headers are redacted by default. This is header redaction, not a general prompt/body/query scrubber. Raw preservation is subject to this rule. `--include-sensitive-headers` is an explicit capture opt-out. Validate diagnoses unredacted credentials; it never rewrites input.
 
 Offline `--input` is repeatable for export, validate and report. Explicit files are accepted; directories discover only schema-v2 manifest-owned traces recursively, avoiding training exports and replay reports. Existing output files and capture directories are not overwritten. Historical schema-v1 logs are not supported or modified.
+
+`report` also accepts explicit `train.jsonl` files produced by `export`. Each JSONL line is a separate selectable trajectory. The viewer uses the regular conversation step layout for messages, reasoning, and tool calls/results. The left outline selects a conversation for trace reports or a trajectory for training reports, then navigates its system messages, tools, and steps. `TRAINABLE` marks only steps with a trainable assistant response, both in the outline and in the step title. Do not mix trace and training files in one report.
 
 ### Export
 

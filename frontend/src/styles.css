@@ -7,58 +7,109 @@ html, body {
     background-color: #1e1e1e; /* vs-bg color */
 }
 
-/* Step navigation and block cards used by the report viewer. */
-.trace-step-nav {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin: 0 auto 1.5rem;
-    padding: 0.65rem 0.75rem;
+/* Shared trace/train outline. The main conversation retains its original width. */
+.trace-page-header, .trace-single-view { max-width: 60em; margin: 0 auto; }
+.trace-layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 60em);
+    justify-content: center;
+    gap: 1.5rem;
+    max-width: 79em;
+    margin: 0 auto;
+    padding: 0 1rem 2rem;
+}
+.trace-main { min-width: 0; }
+.trace-sidebar {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
     border: 1px solid #3e3e42;
     background: #252526;
-    position: sticky;
-    top: 0.5rem;
-    z-index: 10;
+    padding: 0.75rem 0;
+    scrollbar-width: thin;
 }
-
-.trace-step-nav-label {
+.trace-sidebar-heading {
+    padding: 0 0.85rem 0.55rem;
     color: #dcdcaa;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    flex: 0 0 auto;
 }
-
-.trace-step-list {
-    display: flex;
-    gap: 0.45rem;
-    overflow-x: auto;
-    padding-bottom: 0.15rem;
+.trace-sidebar-section-label {
+    padding: 0.65rem 0.85rem 0.25rem;
+    color: #808080;
+    text-transform: uppercase;
+    border-top: 1px solid #3e3e42;
 }
-
-.trace-step-button {
-    border: 1px solid #569cd6;
-    background: #1e1e1e;
+.trace-sidebar-collections { max-height: 16rem; overflow-y: auto; scrollbar-width: thin; }
+.trace-sidebar-group { border-top: 1px solid #3e3e42; padding: 0.4rem 0; }
+.trace-sidebar-link {
+    display: block;
+    width: 100%;
+    padding: 0.42rem 0.85rem;
+    border: 0;
+    background: transparent;
     color: #9cdcfe;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.55rem;
-    cursor: pointer;
     font: inherit;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
+.trace-sidebar-link:hover, .trace-sidebar-link:focus-visible,
+.trace-sidebar-selected { background: #264f78; color: #fff; outline: none; }
+.trace-sidebar-conversation { color: #dcdcaa; font-weight: 700; }
+.trace-sidebar-child { padding-left: 1.65rem; }
+.trace-sidebar-step { display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; }
+.trace-sidebar-trainable {
+    flex: 0 0 auto;
+    border: 1px solid #4ec9b0;
+    color: #4ec9b0;
+    padding: 0.05rem 0.2rem;
+    font-size: 0.7em;
+}
+.trace-sidebar-toggle, .trace-sidebar-close, .trace-sidebar-backdrop { display: none; }
+.trace-conversation-anchor, .trace-context-anchor, .trace-step-card { scroll-margin-top: 1rem; }
 
-.trace-step-button:hover,
-.trace-step-button:focus-visible {
-    background: #264f78;
-    color: #ffffff;
-    outline: none;
+@media (max-width: 850px) {
+    .trace-layout { display: block; padding: 0 1rem 2rem; }
+    .trace-sidebar-toggle {
+        display: block;
+        position: fixed;
+        bottom: 1rem;
+        left: 1rem;
+        z-index: 20;
+        border: 1px solid #569cd6;
+        background: #252526;
+        color: #9cdcfe;
+        padding: 0.6rem 0.8rem;
+        font: inherit;
+        cursor: pointer;
+    }
+    .trace-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 30;
+        width: min(19rem, 85vw);
+        height: 100vh;
+        max-height: none;
+        transform: translateX(-105%);
+        transition: transform 0.2s ease;
+    }
+    .trace-sidebar-open { transform: translateX(0); }
+    .trace-sidebar-close { display: inline; float: right; border: 0; background: none; color: #dcdcaa; font: inherit; cursor: pointer; }
+    .trace-sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 25; background: #0009; }
 }
 
 .trace-step-card {
     border: 1px solid #569cd6;
     background: #1e1e1e;
     margin: 1.5rem 0;
-    scroll-margin-top: 4rem;
+    scroll-margin-top: 1rem;
 }
 
 .trace-step-header {
@@ -146,6 +197,38 @@ html, body {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     overflow-x: auto;
+}
+
+.train-step-badge {
+    display: inline-block;
+    margin-left: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.85em;
+    border: 1px solid #4ec9b0;
+    color: #4ec9b0;
+}
+
+.train-pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+}
+
+.train-content-details {
+    margin: 0.5rem 0;
+    border: 1px dashed #55565c;
+    padding: 0.5rem 0.75rem;
+}
+
+.train-content-details summary {
+    cursor: pointer;
+    color: #9cdcfe;
+}
+
+
+.train-source {
+    overflow-wrap: anywhere;
 }
 
 

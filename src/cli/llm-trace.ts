@@ -13,6 +13,7 @@ llm-trace export --input PATH [--input PATH...] --output FILE
   [--merge-system-separator TEXT] (requires --merge-system-messages; default: two newlines)
 llm-trace validate --input PATH [--input PATH...] --output FILE [--outcome complete|incomplete] [--strict]
 llm-trace report --input PATH [--input PATH...] --output FILE
+  Accepts schema-v2 trace.jsonl or train.jsonl (one training trajectory per line).
 llm-trace replay --input FILE --base-url URL (--line-number N... | --seed N)
   [--output DIR] [--stream preserve|on|off] [--model MODEL] [--max-tokens N]
   [--api-key-env NAME] [--auth-scheme protocol|bearer|x-api-key]

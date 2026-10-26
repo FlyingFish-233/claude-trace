@@ -14,6 +14,7 @@ llm-trace capture --upstream https://provider.example/v1 --log-dir captures/run-
 llm-trace validate --input captures/run-001 --output validation.json
 llm-trace export --input captures/run-001 --output training.jsonl
 llm-trace report --input captures/run-001 --output report.html
+llm-trace report --input training.jsonl --output training-report.html
 llm-trace replay --input captures/run-001/trace.jsonl --line-number 1 \
   --base-url https://target.example/v1 --api-key-env TARGET_API_KEY --output replay/run-001
 
@@ -35,6 +36,8 @@ opencode-trace --log-dir captures/opencode-001 -- run "hello"
 默认脱敏 Authorization、Cookie 等敏感头，不是通用的 prompt/body/query 内容清洗。原始数据保全以此规则为边界。显式 `--include-sensitive-headers` 可关闭头脱敏；validate 会诊断未脱敏凭据，不原地清洗文件。
 
 export/validate/report 的 `--input` 可重复，接受文件或目录；目录仅递归读取 schema-v2 manifest 指向的 trace，避免误读训练结果或 replay 报告。不覆盖已有输出或运行目录；不兼容、不删除、不批量转换历史 schema-v1 记录。
+
+`report` 也接受显式指定的 `train.jsonl` 文件（由 `export` 生成）。每一行作为一条可切换的轨迹，沿用原有 Step 布局展示消息、推理、工具调用和结果。左侧目录可选择 trace 报告的 conversation 或训练报告的轨迹，并跳转到所选内容的 system message、tools 和 Step；仅在包含可训练助手输出的 Step 标题和对应目录项标注 `TRAINABLE`。同一份报告不能混用 trace 与训练文件。
 
 ## 导出
 

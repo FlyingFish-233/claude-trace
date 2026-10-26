@@ -8,7 +8,7 @@
 
 import fs from "fs";
 import path from "path";
-import { RawPair, ClaudeData, HTMLGenerationData } from "../types";
+import { RawPair, ClaudeData, HTMLGenerationData, TrainTrajectory } from "../types";
 
 /**
  * Builds self-contained HTML trace reports from raw API request/response pairs.
@@ -96,6 +96,7 @@ export class HTMLGenerator {
 	private prepareDataForInjection(data: HTMLGenerationData): string {
 		const claudeData: ClaudeData = {
 			rawPairs: data.rawPairs,
+			...(data.trainTrajectories ? { trainTrajectories: data.trainTrajectories } : {}),
 			timestamp: data.timestamp,
 			metadata: {
 				includeAllRequests: data.includeAllRequests || false,
@@ -151,6 +152,7 @@ export class HTMLGenerator {
 			timestamp?: string;
 			includeAllRequests?: boolean;
 			tool?: string;
+			trainTrajectories?: TrainTrajectory[];
 		} = {},
 	): Promise<void> {
 		try {
@@ -166,6 +168,7 @@ export class HTMLGenerator {
 			// Prepare data for injection
 			const htmlData: HTMLGenerationData = {
 				rawPairs: filteredPairs,
+				trainTrajectories: options.trainTrajectories,
 				timestamp: options.timestamp || new Date().toISOString().replace("T", " ").slice(0, -5),
 				includeAllRequests: options.includeAllRequests || false,
 				tool: options.tool,

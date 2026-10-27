@@ -73,7 +73,7 @@ gzip/br/deflate 等只在存储解释时解码；无法解码的内容保存编�
 1. 校验原始记录，只有成功、完整且可转换的模型返回进入训练导出。
 2. 协议适配器转换为规范化 history、answer、tools、usage 和推理来源信息。Messages system、Responses instructions 映射为前置 system；工具调用与结果统一表达。
 3. 按 run、协议、明确 session 标识分区，匹配**应用导出选项前**的规范化历史。模型与工具定义也参与延续判断；使用唯一最长历史前缀连接轨迹。
-4. 歧义、压缩、工具变化或分叉产生新片段，metadata 和诊断记录原因。不会跨 run 或协议拼接。
+4. 历史中出现压缩文字本身不会分段；唯一最长前缀匹配时继续同一轨迹。歧义、工具变化或分叉产生新片段，metadata 和诊断记录原因。不会跨 run 或协议拼接。
 5. 对关联后的序列依次执行 developer 转 system、保留第一条 system、合并 system。未启用的步骤不执行；默认合并分隔符是双换行，可显式指定空字符串。
 
 规范化恢复模板需要的行为：过滤派生 system 中的 billing 标记；OpenAI 文本块按换行拼接；Responses 函数定义按稳定字段顺序输出。完整 reasoning 文本、summary、encrypted 字段的角色分开处理，摘要不充当完整推理。这些都不改变原始采集或转发。

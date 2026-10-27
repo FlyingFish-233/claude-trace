@@ -54,7 +54,7 @@ system 的 vLLM Messages 接口，使用 `--merge-system-messages --merge-system
 所有协议的默认分隔符仍为双换行。导出规范化会过滤 system 中的 billing 标记，按换行拼接
 OpenAI 文本块，并按稳定顺序输出 Responses 函数字段；采集原文和 replay 请求内容不变。
 
-Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/合并不依赖 developer 转换，未转换 developer 保留原位。轨迹关联使用转换前历史，按 run、协议、明确 session header 隔离；工具变化、歧义、压缩或历史分叉新建片段。不会跨运行拼接。
+Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/合并不依赖 developer 转换，未转换 developer 保留原位。轨迹关联使用转换前历史，按 run、协议、明确 session header 隔离；唯一最长历史前缀匹配时继续同一轨迹，即使历史中包含压缩文字。工具变化、歧义或历史分叉才新建片段，不会跨运行拼接。
 
 ## 校验与报告
 

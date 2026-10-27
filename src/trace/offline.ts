@@ -118,7 +118,7 @@ export function validateTraces(inputs: string[], output: string, outcome: "compl
 export function exportTraces(inputs: string[], output: string, options: ExportOptions = {}, diagnosticsPath = `${output}.diagnostics.json`): Json {
   if (path.resolve(output) === path.resolve(diagnosticsPath)) throw new Error("output_diagnostics_collision");
   assertNewOutput(output); assertNewOutput(diagnosticsPath);
-  const chains: Array<{ partition: string; history: Json[]; toolsKey: string; model: any; messages: Json[]; tools: Json[]; metadata: Json; markers: Set<string> }> = [];
+  const chains: Array<{ partition: string; history: Json[]; toolsKey: string; model: any; messages: Json[]; tools: Json[]; metadata: Json }> = [];
   const diagnostics: Json[] = [];
   const seen = new Set<string>();
   const records = readRecords(inputs).sort((a, b) => a.record.timing.start_ms - b.record.timing.start_ms || a.file.localeCompare(b.file) || a.line - b.line);
@@ -140,23 +140,20 @@ export function exportTraces(inputs: string[], output: string, options: ExportOp
       const partition = key([record.run_id, record.protocol, session]);
       const toolsKey = key(turn.tools);
       const model = record.request.body.model;
-      const markers = new Set(turn.history.map(m => String(m.content)).filter(t => /^<summary\b[\s\S]*<\/summary>$/i.test(t.trim()) || /<conversation_summary>|conversation (?:has been|was) compacted|summary of the conversation so far|this session is being continued from a previous conversation/i.test(t)));
       const siblings = chains.filter(c => c.partition === partition);
-      const newCompaction = [...markers].some(marker => !siblings.some(c => c.markers.has(marker)));
       const candidates = siblings.filter(c => c.model === model && c.toolsKey === toolsKey && c.history.length <= turn.history.length && c.history.every((m, i) => historyKey(m) === historyKey(turn.history[i])));
       const longest = Math.max(-1, ...candidates.map(c => c.history.length));
       const best = candidates.filter(c => c.history.length === longest);
-      let chain = !newCompaction && best.length === 1 ? best[0] : undefined;
-      const reason = chain ? "continued" : newCompaction ? "compaction" : best.length > 1 ? "ambiguous_history" : !siblings.length ? "initial" : siblings.some(c => c.toolsKey !== toolsKey) ? "tools_changed" : "divergent_history";
+      let chain = best.length === 1 ? best[0] : undefined;
+      const reason = chain ? "continued" : best.length > 1 ? "ambiguous_history" : !siblings.length ? "initial" : siblings.some(c => c.toolsKey !== toolsKey) ? "tools_changed" : "divergent_history";
       if (!chain) {
-        chain = { partition, history: [], toolsKey, model, messages: [], tools: turn.tools, markers,
+        chain = { partition, history: [], toolsKey, model, messages: [], tools: turn.tools,
           metadata: { chain_id: `chain-${chains.length}`, run_id: record.run_id, protocol: record.protocol, session_id: session, segment_reason: reason, rounds: [], response_sources: [], reasoning_metadata: [] } };
         chains.push(chain);
       }
       const addition = turn.history.slice(chain.history.length);
       chain.messages.push(...addition.map(m => ({ ...m, trainable: false })), ...turn.answer.map(m => ({ ...m, trainable: true })));
       chain.history = [...turn.history, ...turn.answer];
-      markers.forEach(marker => chain!.markers.add(marker));
       chain.metadata.rounds.push({ ...source, model, usage: turn.usage });
       chain.metadata.response_sources.push(source);
       chain.metadata.reasoning_metadata.push(...turn.reasoning_metadata.map(item => ({ ...item, source })));

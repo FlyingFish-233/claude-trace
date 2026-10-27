@@ -408,7 +408,7 @@ for(const protocol of PROTOCOLS)test(`${protocol}: tool calls and results, inclu
   assert.deepEqual(adapters[protocol].convert(record).answer[0].tool_calls[0].function.arguments,{x:2});
 });
 
-test("explicit sessions and compaction boundaries isolate history independently of export options",t=>{
+test("explicit sessions isolate history while prefix-compatible summaries continue it",t=>{
   const root=workspace(t),w=new TraceWriter(root),f=fixture("openai-chat-completions");
   f.request.messages=[{role:"developer",content:"policy"},{role:"user",content:"hi"}];
   f.request.metadata={session_id:"a"};write(w,"openai-chat-completions",f.request,f.response);
@@ -417,7 +417,20 @@ test("explicit sessions and compaction boundaries isolate history independently 
   f.request.metadata={session_id:"a"};f.request.messages.push(f.response.choices[0].message,{role:"user",content:"<summary>compressed context</summary>"});write(w,"openai-chat-completions",f.request,f.response);w.stop();
   const plain=exportTraces([root],path.join(root,"plain.jsonl"));
   const changed=exportTraces([root],path.join(root,"changed.jsonl"),{convertDeveloperToSystem:true,filterSystemMessages:true,mergeSystemMessages:true});
-  assert.equal(plain.counts.trajectories,3);assert.deepEqual(plain.requests,changed.requests);assert.equal(plain.requests.at(-1).reason,"compaction");
+  assert.equal(plain.counts.trajectories,2);assert.deepEqual(plain.requests,changed.requests);assert.equal(plain.requests.at(-1).reason,"continued");
+  assert.equal(plain.requests.at(-1).chain_id,plain.requests[0].chain_id);
+});
+
+test("quoted continuation text in a tool result does not split matching history",t=>{
+  const root=workspace(t),w=new TraceWriter(root),f=fixture("openai-chat-completions");
+  f.request.messages=[{role:"user",content:"review this task"}];
+  const call={role:"assistant",content:"",tool_calls:[{id:"call",type:"function",function:{name:"Bash",arguments:'{"command":"read trajectory"}'}}]};
+  write(w,"openai-chat-completions",f.request,{choices:[{message:call,finish_reason:"tool_calls"}]});
+  f.request.messages.push(call,{role:"tool",tool_call_id:"call",content:"Step 76: This session is being continued from a previous conversation."});
+  write(w,"openai-chat-completions",f.request,f.response);w.stop();
+  const result=exportTraces([root],path.join(root,"train.jsonl"));
+  assert.equal(result.counts.trajectories,1);
+  assert.equal(result.requests.at(-1).reason,"continued");
 });
 
 test("unknown multimodal and tool structures are retained raw and skipped with diagnostics",t=>{

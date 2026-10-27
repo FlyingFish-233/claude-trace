@@ -1,16 +1,57 @@
 /** @file Shared trace/train conversation, context, step and JSON rendering. */
-import { html, TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { html, TemplateResult, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { MessageContentBase } from "./message-content-base";
 import { contextAnchorId, conversationAnchorId, stepAnchorId, type ViewerContext, type ViewerConversation, type ViewerItem, type ViewerStep } from "../utils/viewer-model";
+
+const STEP_PAGE_SIZE = 10;
 
 /** Renders the same conversation layout for captured traces and training exports. */
 @customElement("conversation-view")
 export class ConversationView extends MessageContentBase {
 	@property({ attribute: false }) conversations: ViewerConversation[] = [];
+	@state() private page = 0;
 
 	createRenderRoot() { return this; }
+
+	protected willUpdate(changed: PropertyValues<this>) {
+		if (!changed.has("conversations")) return;
+		const previous = changed.get("conversations") as ViewerConversation[] | undefined;
+		const current = this.conversations[0];
+		if (previous?.[0]?.id !== current?.id) this.page = 0;
+		else if (current) this.page = Math.min(this.page, Math.max(0, Math.ceil(current.steps.length / STEP_PAGE_SIZE) - 1));
+	}
+
+	/** Make a sidebar Step visible before the app scrolls to its anchor. */
+	async revealStep(anchorId: string): Promise<void> {
+		const index = this.conversations[0]?.steps.findIndex((step) => stepAnchorId(step.id) === anchorId) ?? -1;
+		if (index < 0) return;
+		this.page = Math.floor(index / STEP_PAGE_SIZE);
+		await this.updateComplete;
+	}
+
+	private changePage(next: number, total: number) {
+		this.page = Math.max(0, Math.min(next, Math.ceil(total / STEP_PAGE_SIZE) - 1));
+		void this.updateComplete.then(() => {
+			this.querySelector<HTMLElement>(".trace-step-pagination-top")?.scrollIntoView({ block: "start" });
+		});
+	}
+
+	private renderPagination(total: number, page: number, position: "top" | "bottom"): TemplateResult {
+		const count = Math.ceil(total / STEP_PAGE_SIZE);
+		if (count <= 1) return html``;
+		const first = page * STEP_PAGE_SIZE + 1;
+		const last = Math.min(total, (page + 1) * STEP_PAGE_SIZE);
+		return html`<nav class=${`trace-step-pagination trace-step-pagination-${position}`} aria-label="Step pages">
+			<button type="button" ?disabled=${page === 0} @click=${() => this.changePage(page - 1, total)}>Previous</button>
+			<span>Steps ${first}–${last} of ${total}</span>
+			<select aria-label="Select Step page" @change=${(event: Event) => this.changePage(Number((event.currentTarget as HTMLSelectElement).value), total)}>
+				${Array.from({ length: count }, (_, index) => html`<option value=${index} ?selected=${index === page}>Page ${index + 1} / ${count}</option>`)}
+			</select>
+			<button type="button" ?disabled=${page >= count - 1} @click=${() => this.changePage(page + 1, total)}>Next</button>
+		</nav>`;
+	}
 
 	private renderContext(context: ViewerContext): TemplateResult {
 		if (context.kind === "tools") {
@@ -62,6 +103,8 @@ export class ConversationView extends MessageContentBase {
 	}
 
 	private renderConversation(conversation: ViewerConversation): TemplateResult {
+		const page = Math.min(this.page, Math.max(0, Math.ceil(conversation.steps.length / STEP_PAGE_SIZE) - 1));
+		const visibleSteps = conversation.steps.slice(page * STEP_PAGE_SIZE, (page + 1) * STEP_PAGE_SIZE);
 		const content = html`
 			<div id=${conversationAnchorId(conversation.id)} class="trace-conversation-anchor border ${conversation.compacted ? "border-red-700" : "border-vs-highlight"} p-4 mb-0">
 				<div class=${conversation.compacted ? "text-red-400" : "text-vs-assistant"}>${conversation.title}</div>
@@ -69,7 +112,9 @@ export class ConversationView extends MessageContentBase {
 			</div>
 			<div class="trace-context-root">${conversation.context.map((context, index) => html`
 				<div id=${contextAnchorId(conversation.id, index)} class="trace-context-anchor">${this.renderContext(context)}</div>`)}</div>
-			${conversation.steps.map((step) => this.renderStep(step))}
+			${this.renderPagination(conversation.steps.length, page, "top")}
+			${visibleSteps.map((step) => this.renderStep(step))}
+			${this.renderPagination(conversation.steps.length, page, "bottom")}
 		`;
 		return html`<div class="mt-8 first:mt-0">
 			${conversation.compacted ? html`

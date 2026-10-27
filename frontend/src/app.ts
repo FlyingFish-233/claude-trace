@@ -15,6 +15,7 @@ import {
 	ProcessedPair,
 } from "../../src/report/shared-conversation-processor";
 import { conversationAnchorId, traceToViewerConversation, trainToViewerConversation } from "./utils/viewer-model";
+import type { ConversationView } from "./components/conversation-view";
 
 /** Top-level trace viewer shell mounted on `#app` in generated HTML reports. */
 @customElement("claude-app")
@@ -110,7 +111,12 @@ export class ClaudeApp extends LitElement {
 	/** Opens any enclosing compacted card before navigating to its section. */
 	private jumpToAnchor(anchorId: string) {
 		this.currentView = "conversations";
-		void this.updateComplete.then(() => {
+		void this.updateComplete.then(async () => {
+			const viewer = this.querySelector<ConversationView>("conversation-view");
+			if (viewer) {
+				await viewer.updateComplete;
+				await viewer.revealStep(anchorId);
+			}
 			setTimeout(() => {
 				const target = document.getElementById(anchorId);
 				if (!target) return;

@@ -12,13 +12,32 @@ function key(value: any): string {
   return JSON.stringify(stable(value));
 }
 
-/** Compare histories without treating trailing horizontal whitespace as a fork. */
+/** Remove blank lines after assistant text while preserving one terminal newline. */
+function withoutTrailingBlankLines(text: string): string {
+  return text.replace(/(?:\r?\n[ \t]*){2,}$/, "\n");
+}
+
+/** Canonicalize exported assistant text and omitted Edit.replace_all defaults. */
+function normalizeAssistantMessage(message: Json): Json {
+  if (message.role !== "assistant") return message;
+  const normalized = { ...message };
+  if (typeof normalized.content === "string") normalized.content = withoutTrailingBlankLines(normalized.content);
+  if (Array.isArray(normalized.tool_calls)) normalized.tool_calls = normalized.tool_calls.map((call: Json) => {
+    const fn = call?.function;
+    if (fn?.name !== "Edit" || !fn.arguments || typeof fn.arguments !== "object" || Array.isArray(fn.arguments) || Object.prototype.hasOwnProperty.call(fn.arguments, "replace_all")) return call;
+    return { ...call, function: { ...fn, arguments: { ...fn.arguments, replace_all: false } } };
+  });
+  return normalized;
+}
+
+/** Compare histories without treating trailing whitespace in assistant text as a fork. */
 function historyKey(value: any): string {
   function stable(v: any): any {
     if (typeof v === "string") return v.replace(/[ \t]+(?=\r?$)/gm, "");
     return Array.isArray(v) ? v.map(stable) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, stable(v[k])])) : v;
   }
-  return JSON.stringify(stable(value));
+  const comparable = value?.role === "assistant" ? normalizeAssistantMessage(value) : value;
+  return JSON.stringify(stable(comparable));
 }
 
 /** One shared policy sequence: developer conversion, first-system filter, then merge. */
@@ -160,7 +179,8 @@ export function exportTraces(inputs: string[], output: string, options: ExportOp
       diagnostics.push({ ...source, status: "assigned", chain_id: chain.metadata.chain_id, reason });
     } catch (error) { diagnostics.push({ ...source, status: "skipped", reason: (error as Error).message }); }
   }
-  const exported = chains.map(chain => ({ messages: transformMessages(chain.messages, options), tools: chain.tools, metadata: chain.metadata }));
+  const exported = chains.map(chain => ({ messages: transformMessages(chain.messages, options).map(normalizeAssistantMessage),
+    tools: chain.tools, metadata: chain.metadata }));
   fs.writeFileSync(output, exported.map(value => JSON.stringify(value)).join("\n") + (exported.length ? "\n" : ""), { flag: "wx" });
   const report = { counts: { trajectories: exported.length, assigned: diagnostics.filter(d => d.status === "assigned").length, skipped: diagnostics.filter(d => d.status === "skipped").length }, requests: diagnostics };
   writeJson(diagnosticsPath, report); return report;

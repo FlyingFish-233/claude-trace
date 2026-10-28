@@ -56,7 +56,7 @@ for every protocol. Export normalization removes billing attribution from system
 content, joins OpenAI text blocks with newlines and emits Responses function fields
 in stable template order. Raw capture and replay requests retain their original content.
 
-Anthropic `system` and Responses `instructions` first become leading system messages. Filter/merge work without developer conversion. Association uses pre-transformation histories, partitioned by run, protocol and explicit session header. A unique longest matching history prefix continues a trajectory, even when the history contains compaction text; changed tools, ambiguity or divergent histories create new segments. No cross-run merging.
+Anthropic `system` and Responses `instructions` first become leading system messages. Filter/merge work without developer conversion. Association uses pre-transformation histories, partitioned by run, protocol and explicit session header. A unique longest matching history prefix continues a trajectory, even when the history contains compaction text; changed tools, ambiguity or divergent histories create new segments. Assistant text's extra trailing blank lines and an omitted `Edit.replace_all` (equivalent to `false`) do not split a trajectory; export collapses extra trailing blank lines to one terminal newline and explicitly includes `replace_all: false`. Raw captures remain unchanged. No cross-run merging.
 
 ### Validate and report
 

@@ -196,6 +196,41 @@ test("history association ignores trailing whitespace drift in tool arguments",t
   assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued"]);
 });
 
+test("history association ignores trailing blank lines in assistant text and exports one newline",t=>{
+  const root=workspace(t),writer=new TraceWriter(path.join(root,"capture"));
+  const request={model:"test-model",max_tokens:64,messages:[{role:"user",content:"hi"}]};
+  const firstResponse={type:"message",role:"assistant",content:[{type:"text",text:"draft\n\n\n"}],stop_reason:"end_turn",usage:{input_tokens:1,output_tokens:1}};
+  write(writer,"anthropic-messages",request,firstResponse);
+  const continuedRequest={...request,messages:[...request.messages,{role:"assistant",content:[{type:"text",text:"draft\n\n"}]},{role:"user",content:"continue"}]};
+  const finalResponse={type:"message",role:"assistant",content:[{type:"text",text:"done"}],stop_reason:"end_turn",usage:{input_tokens:2,output_tokens:1}};
+  write(writer,"anthropic-messages",continuedRequest,finalResponse);writer.stop();
+  const output=path.join(root,"train.jsonl"),result=exportTraces([writer.file],output);
+  assert.equal(result.counts.trajectories,1);
+  assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued"]);
+  const trajectory=JSON.parse(fs.readFileSync(output,"utf8"));
+  assert.equal(trajectory.messages[1].content,"draft\n");
+  assert.equal(trajectory.messages[1].trainable,true);
+});
+
+test("omitted Edit.replace_all continues as false and exports the explicit default",t=>{
+  const root=workspace(t),writer=new TraceWriter(path.join(root,"capture"));
+  const request={model:"test-model",max_tokens:64,messages:[{role:"user",content:"edit the file"}]};
+  const edit={file_path:"/tmp/example.py",old_string:"before",new_string:"after"};
+  const firstResponse={type:"message",role:"assistant",content:[{type:"tool_use",id:"edit-1",name:"Edit",input:edit}],stop_reason:"tool_use",usage:{input_tokens:1,output_tokens:1}};
+  write(writer,"anthropic-messages",request,firstResponse);
+  const continuedRequest={...request,messages:[...request.messages,
+    {role:"assistant",content:[{type:"tool_use",id:"edit-1",name:"Edit",input:{...edit,replace_all:false}}]},
+    {role:"user",content:[{type:"tool_result",tool_use_id:"edit-1",content:"edited"}]}]};
+  const finalResponse={type:"message",role:"assistant",content:[{type:"text",text:"done"}],stop_reason:"end_turn",usage:{input_tokens:2,output_tokens:1}};
+  write(writer,"anthropic-messages",continuedRequest,finalResponse);writer.stop();
+  const output=path.join(root,"train.jsonl"),result=exportTraces([writer.file],output);
+  assert.equal(result.counts.trajectories,1);
+  assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued"]);
+  const trajectory=JSON.parse(fs.readFileSync(output,"utf8"));
+  assert.equal(trajectory.messages[1].tool_calls[0].function.arguments.replace_all,false);
+  assert.equal(readRecords([writer.file])[0].record.response!.body!.content[0].input.replace_all,undefined);
+});
+
 test("Responses empty terminal envelope reconstructs full reasoning, not summary",t=>{
   const root=workspace(t),w=new TraceWriter(root),f=fixture("openai-responses");const record=write(w,"openai-responses",f.request,f.response);w.stop();
   delete record.response!.body;

@@ -54,7 +54,7 @@ system 的 vLLM Messages 接口，使用 `--merge-system-messages --merge-system
 所有协议的默认分隔符仍为双换行。导出规范化会过滤 system 中的 billing 标记，按换行拼接
 OpenAI 文本块，并按稳定顺序输出 Responses 函数字段；采集原文和 replay 请求内容不变。
 
-Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/合并不依赖 developer 转换，未转换 developer 保留原位。轨迹关联使用转换前历史，按 run、协议、明确 session header 隔离；唯一最长历史前缀匹配时继续同一轨迹，即使历史中包含压缩文字。工具变化、歧义或历史分叉才新建片段，不会跨运行拼接。
+Anthropic 顶层 system 和 Responses instructions 先映射到开头。过滤/合并不依赖 developer 转换，未转换 developer 保留原位。轨迹关联使用转换前历史，按 run、协议、明确 session header 隔离；唯一最长历史前缀匹配时继续同一轨迹，即使历史中包含压缩文字。助手正文末尾多余的空行，以及省略的 `Edit.replace_all`（等同于 `false`），不会导致分段；导出时将多余的末尾空行折叠为一个换行，并显式写出 `replace_all: false`。原始采集保持不变。工具变化、歧义或历史分叉才新建片段，不会跨运行拼接。
 
 ## 校验与报告
 
@@ -72,6 +72,6 @@ validate 独立报告采集完整性、协议有效性、HTTP 成功、模型完
 
 必跑：`npm run typecheck`、`npm run test:unit`、`npm run build`。测试使用 mock upstream 与受控客户端，覆盖原文保全、协议转换、错误/取消、轨迹关联及 replay。构建会清理旧 dist；离线打包脚本检查所有入口并要求干净 Git 工作区，不自动发布。
 
-参见 [MIGRATION.md](MIGRATION.md)。本次不修改外部 WorkflowExp、不替换线上安装、不发布 npm、不处理历史 trace。
+参见 [MIGRATION.md](MIGRATION.md)。源码更新不会自动替换外部 WorkflowExp 的安装，也不会处理历史 trace。
 
 Built/offline acceptance: `npm run test:built` (after build; local temporary npm tarball only).

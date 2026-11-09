@@ -196,7 +196,7 @@ test("history association ignores trailing whitespace drift in tool arguments",t
   assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued"]);
 });
 
-test("history association ignores trailing blank lines in assistant text and exports one newline",t=>{
+test("history association ignores trailing blank lines in assistant text and omits them from export",t=>{
   const root=workspace(t),writer=new TraceWriter(path.join(root,"capture"));
   const request={model:"test-model",max_tokens:64,messages:[{role:"user",content:"hi"}]};
   const firstResponse={type:"message",role:"assistant",content:[{type:"text",text:"draft\n\n\n"}],stop_reason:"end_turn",usage:{input_tokens:1,output_tokens:1}};
@@ -208,8 +208,25 @@ test("history association ignores trailing blank lines in assistant text and exp
   assert.equal(result.counts.trajectories,1);
   assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued"]);
   const trajectory=JSON.parse(fs.readFileSync(output,"utf8"));
-  assert.equal(trajectory.messages[1].content,"draft\n");
+  assert.equal(trajectory.messages[1].content,"draft");
   assert.equal(trajectory.messages[1].trainable,true);
+});
+
+test("assistant text with only whitespace continues through empty history and exports without trailing whitespace",t=>{
+  const root=workspace(t),writer=new TraceWriter(path.join(root,"capture"));
+  const request={model:"test-model",max_tokens:64,messages:[{role:"user",content:"hi"}]};
+  const response=(content:string)=>({type:"message",role:"assistant",content:[{type:"text",text:content}],stop_reason:"end_turn",usage:{input_tokens:1,output_tokens:1}});
+  write(writer,"anthropic-messages",request,response("\n"));
+  const second={...request,messages:[...request.messages,{role:"assistant",content:[{type:"text",text:""}]},{role:"user",content:"continue"}]};
+  write(writer,"anthropic-messages",second,response("answer  \n \t\n"));
+  const third={...request,messages:[...second.messages,{role:"assistant",content:[{type:"text",text:"answer"}]},{role:"user",content:"finish"}]};
+  write(writer,"anthropic-messages",third,response("done \t\n"));writer.stop();
+  const output=path.join(root,"train.jsonl"),result=exportTraces([writer.file],output);
+  assert.equal(result.counts.trajectories,1);
+  assert.deepEqual(result.requests.map((r:Json)=>r.reason),["initial","continued","continued"]);
+  const trajectory=JSON.parse(fs.readFileSync(output,"utf8"));
+  assert.deepEqual(trajectory.messages.filter((m:Json)=>m.role==="assistant").map((m:Json)=>m.content),["","answer","done"]);
+  assert.equal(readRecords([writer.file])[0].record.response!.body!.content[0].text,"\n");
 });
 
 test("omitted Edit.replace_all continues as false and exports the explicit default",t=>{

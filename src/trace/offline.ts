@@ -12,16 +12,16 @@ function key(value: any): string {
   return JSON.stringify(stable(value));
 }
 
-/** Remove blank lines after assistant text while preserving one terminal newline. */
-function withoutTrailingBlankLines(text: string): string {
-  return text.replace(/(?:\r?\n[ \t]*){2,}$/, "\n");
+/** Remove trailing whitespace from assistant text on both sides of history matching. */
+function withoutTrailingWhitespace(text: string): string {
+  return text.trimEnd();
 }
 
 /** Canonicalize exported assistant text and omitted Edit.replace_all defaults. */
 function normalizeAssistantMessage(message: Json): Json {
   if (message.role !== "assistant") return message;
   const normalized = { ...message };
-  if (typeof normalized.content === "string") normalized.content = withoutTrailingBlankLines(normalized.content);
+  if (typeof normalized.content === "string") normalized.content = withoutTrailingWhitespace(normalized.content);
   if (Array.isArray(normalized.tool_calls)) normalized.tool_calls = normalized.tool_calls.map((call: Json) => {
     const fn = call?.function;
     if (fn?.name !== "Edit" || !fn.arguments || typeof fn.arguments !== "object" || Array.isArray(fn.arguments) || Object.prototype.hasOwnProperty.call(fn.arguments, "replace_all")) return call;
